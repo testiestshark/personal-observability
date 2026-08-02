@@ -80,11 +80,38 @@ Continue developing this project in the [Lovable editor](https://lovable.dev/pro
 
 ## Development
 
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+This project uses [Bun](https://bun.sh) as its package manager and runtime, and [Supabase](https://supabase.com) (run locally via Docker) for the database/auth backend.
+
+Prerequisites:
+
+- [Bun](https://bun.sh)
+- [Docker](https://www.docker.com/) (running) — needed for the local Supabase stack
+
+Setup:
 
 ```sh
 git clone <this-repository-url>
 cd <repository-name>
-npm i
-npm run dev
+bun install
+
+# Start local Supabase (Postgres, Auth, Storage, Studio)
+bunx supabase start
+
+# Copy the env template and fill in the local values printed by `bunx supabase status`
+cp .env.example .env.local
+
+bun run dev
 ```
+
+Restart `bun run dev` after changing any environment variable.
+
+Other useful commands:
+
+```sh
+bun run build     # production build
+bun run lint       # eslint
+bun run format     # prettier --write
+bunx supabase stop # stop the local Supabase stack
+```
+
+The hosted app (this repo's `main` branch, synced with Lovable) connects to **hosted** Supabase — only local development uses the local stack. See [CLAUDE.md](CLAUDE.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on the local-vs-hosted split and secrets policy.
