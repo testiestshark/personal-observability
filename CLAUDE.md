@@ -33,3 +33,30 @@ bunx supabase start / status / stop   # local Supabase stack (requires Docker ru
 - This repo is synced with [Lovable](https://lovable.dev) — see `AGENTS.md`. Avoid rewriting published git history (force-push, rebase/amend/squash on pushed commits).
 - Database schema changes go through Supabase migrations in `supabase/migrations/` — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the migration policy. Don't hand-edit the hosted schema outside of migrations.
 - Don't add unnecessary dependencies or scaffold empty feature folders — keep the tree matching what's actually in use.
+
+## Operating rules (must follow)
+
+**Before starting any work:**
+
+```powershell
+git switch main
+git pull --ff-only origin main
+git status
+```
+
+Confirm the working tree is clean before making changes.
+
+**For an ordinary feature:** work on a feature branch (`git switch -c feature/short-description`), develop and test with `bun run dev`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
+
+**For a database change:**
+
+```powershell
+bunx supabase migration new describe_change   # write SQL under supabase/migrations/
+bunx supabase db reset                        # recreate + test the local database
+bunx supabase db push --dry-run               # inspect what would deploy
+bunx supabase db push                         # apply to hosted, only after review
+```
+
+All permanent database changes must exist as version-controlled SQL migrations under `supabase/migrations/`. Local Studio is for inspection/experimentation only — it is never the source of truth.
+
+**Avoid two simultaneous editors.** Lovable and Claude Code must not edit the same files at the same time. Rhythm: pull latest → choose one editor → finish the change → test locally → commit and push → wait for sync → pull again before switching tools. If Lovable creates a reviewed database migration, pull that commit before continuing local database work.
