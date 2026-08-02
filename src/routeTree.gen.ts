@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as IntegrationsRouteImport } from './routes/integrations'
 import { Route as JournalRouteImport } from './routes/journal'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as TimelineRouteImport } from './routes/timeline'
 
@@ -36,6 +37,11 @@ const JournalRoute = JournalRouteImport.update({
   path: '/journal',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/insights': typeof InsightsRoute
   '/integrations': typeof IntegrationsRoute
   '/journal': typeof JournalRoute
+  '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/insights': typeof InsightsRoute
   '/integrations': typeof IntegrationsRoute
   '/journal': typeof JournalRoute
+  '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
 }
@@ -69,22 +77,36 @@ export interface FileRoutesById {
   '/insights': typeof InsightsRoute
   '/integrations': typeof IntegrationsRoute
   '/journal': typeof JournalRoute
+  '/login': typeof LoginRoute
   '/settings': typeof SettingsRoute
   '/timeline': typeof TimelineRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/insights' | '/integrations' | '/journal' | '/settings' | '/timeline'
+    | '/'
+    | '/insights'
+    | '/integrations'
+    | '/journal'
+    | '/login'
+    | '/settings'
+    | '/timeline'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/insights' | '/integrations' | '/journal' | '/settings' | '/timeline'
+    | '/'
+    | '/insights'
+    | '/integrations'
+    | '/journal'
+    | '/login'
+    | '/settings'
+    | '/timeline'
   id:
     | '__root__'
     | '/'
     | '/insights'
     | '/integrations'
     | '/journal'
+    | '/login'
     | '/settings'
     | '/timeline'
   fileRoutesById: FileRoutesById
@@ -94,6 +116,7 @@ export interface RootRouteChildren {
   InsightsRoute: typeof InsightsRoute
   IntegrationsRoute: typeof IntegrationsRoute
   JournalRoute: typeof JournalRoute
+  LoginRoute: typeof LoginRoute
   SettingsRoute: typeof SettingsRoute
   TimelineRoute: typeof TimelineRoute
 }
@@ -128,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JournalRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -150,6 +180,7 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsRoute: InsightsRoute,
   IntegrationsRoute: IntegrationsRoute,
   JournalRoute: JournalRoute,
+  LoginRoute: LoginRoute,
   SettingsRoute: SettingsRoute,
   TimelineRoute: TimelineRoute,
 }

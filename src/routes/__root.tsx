@@ -3,7 +3,9 @@ import {
   Outlet,
   Link,
   createRootRouteWithContext,
+  redirect,
   useRouter,
+  useRouterState,
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
@@ -12,6 +14,10 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "../components/app-shell";
+import { getCurrentUser } from "../lib/auth/auth.functions";
+
+// Routes reachable without a session. Everything else redirects to /login.
+const PUBLIC_PATHS = new Set(["/login"]);
 
 
 function NotFoundComponent() {
@@ -75,6 +81,18 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  // Runs on the server during SSR and on the client for later navigations, so the
+  // session is resolved before anything renders — no authenticated-looking flash.
+  beforeLoad: async ({ location }) => {
+    const user = await getCurrentUser();
+    const isPublic = PUBLIC_PATHS.has(location.pathname);
+
+    if (!user && !isPublic) throw redirect({ to: "/login" });
+    if (user && isPublic) throw redirect({ to: "/" });
+
+    return { user };
+  },
+
   head: () => ({
     meta: [
       { charSet: "utf-8" },
@@ -128,14 +146,17 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AppShell>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-      </AppShell>
-    </QueryClientProvider>
+  // Signed-out pages render bare — the shell's navigation is meaningless there.
+  const content = PUBLIC_PATHS.has(pathname) ? (
+    <Outlet />
+  ) : (
+    <AppShell>
+      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+      <Outlet />
+    </AppShell>
   );
 
+  return <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>;
 }

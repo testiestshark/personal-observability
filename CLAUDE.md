@@ -21,6 +21,12 @@ bun run format    # prettier --write
 bunx supabase start / status / stop   # local Supabase stack (requires Docker running)
 ```
 
+## Authentication
+
+Cookie-based Supabase Auth (email + password) lives in `src/lib/auth/`. All auth runs through server functions; there is no Supabase client in the browser. Route protection is the `beforeLoad` in `src/routes/__root.tsx`.
+
+The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middleware.ts`, `auth-attacher.ts`) implement an older `localStorage`/Bearer-token approach and are **unused** — don't build on them. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#authentication) for design, [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for a repeatable manual verification runbook.
+
 ## Environment & Supabase
 
 - Copy `.env.example` to `.env.local` and fill in real values — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the local-vs-hosted Supabase model and secrets policy.

@@ -1,6 +1,9 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
+import { Button } from "@/components/ui/button";
+import { signOut } from "@/lib/auth/auth.functions";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -21,6 +24,21 @@ export const Route = createFileRoute("/settings")({
 });
 
 function Settings() {
+  const router = useRouter();
+  const { user } = Route.useRouteContext();
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+    try {
+      await signOut();
+      await router.invalidate();
+      await router.navigate({ to: "/login" });
+    } finally {
+      setSigningOut(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -30,6 +48,22 @@ function Settings() {
       />
 
       <div className="grid gap-4">
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h2 className="text-sm font-medium">Account</h2>
+          <div className="mt-2">
+            <PlaceholderRow label="Signed in as" value={user?.email ?? "—"} />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            onClick={handleSignOut}
+            disabled={signingOut}
+          >
+            {signingOut ? "Signing out…" : "Sign out"}
+          </Button>
+        </section>
+
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">Preferences</h2>
           <div className="mt-2">
