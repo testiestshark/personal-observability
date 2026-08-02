@@ -35,6 +35,5 @@ const csrfMiddleware = createCsrfMiddleware({
 // Auth is cookie-based (see src/lib/auth/), so no bearer token needs attaching:
 // same-origin cookies are sent with serverFn requests automatically.
 export const startInstance = createStart(() => ({
-  functionMiddleware: [attachSupabaseAuth],
   requestMiddleware: [errorMiddleware, csrfMiddleware],
 }));
