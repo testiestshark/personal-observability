@@ -27,7 +27,7 @@ function Today() {
       <PageHeader
         eyebrow="Today"
         title="A quiet look at your day"
-        subtitle="Signals will appear here once sources are connected."
+        subtitle="Your signals will appear here once you connect a source."
       />
 
       <div className="grid gap-4">
