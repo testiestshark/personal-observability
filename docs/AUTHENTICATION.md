@@ -48,6 +48,28 @@ This wipes local `auth.users` along with everything else, so any account created
 6. **Click "Sign out" in Settings.**
    Expected: redirected to `/login`. Then navigating to `http://localhost:8080/` should redirect straight back to `/login` — confirms sign-out actually cleared the server-side session, not just client state.
 
+## Production-build check (catches bugs the dev server hides)
+
+The dev server reads `.env.local`, which defines `VITE_SUPABASE_*`. Hosted builds do not have those. Any code that quietly depends on them therefore passes locally and fails only in production — this is exactly how the 2026-08-02 hosted sign-in outage shipped. So verify the built artifact, not just the dev server:
+
+```powershell
+bun run build
+```
+
+Then assert on the output:
+
+```powershell
+# Must print nothing — the generated Supabase client must never reach the browser
+Select-String -Path .output/public/assets/*.js -Pattern "Connect Supabase in Lovable Cloud"
+
+# Must list a chunk — auth server code must be present server-side
+Get-ChildItem .output/server/_ssr/ | Where-Object { $_.Name -like "supabase-request.server*" }
+```
+
+If the first command prints a match, the browser bundle contains the generated Supabase client and hosted auth will break — see [ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication) for why (`attachSupabaseAuth` re-registered in `src/start.ts` is the usual cause).
+
+Note that `bunx vite preview` does **not** work for this project: Nitro builds a Cloudflare Worker to `.output/server/`, while `vite preview` expects `dist/server/server.js`. A 500 from it is a tooling mismatch, not an app failure.
+
 ## Confirm against the database directly
 
 Open Supabase Studio at `http://127.0.0.1:54323` → Authentication → Users. The account created in step 2 should be listed there, with the same email shown in Settings — this is the cross-check that "connected as X" reflects a real row, not a client-side illusion.
