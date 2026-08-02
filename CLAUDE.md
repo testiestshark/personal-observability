@@ -25,7 +25,9 @@ bunx supabase start / status / stop   # local Supabase stack (requires Docker ru
 
 Cookie-based Supabase Auth (email + password) lives in `src/lib/auth/`. All auth runs through server functions; there is no Supabase client in the browser. Route protection is the `beforeLoad` in `src/routes/__root.tsx`.
 
-The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middleware.ts`, `auth-attacher.ts`) implement an older `localStorage`/Bearer-token approach and are **unused** — don't build on them. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#authentication) for design, [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for a repeatable manual verification runbook.
+The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middleware.ts`, `auth-attacher.ts`) implement an older `localStorage`/Bearer-token approach — don't build on them.
+
+**Never register `attachSupabaseAuth` as `functionMiddleware` in `src/start.ts`.** It runs in the browser and throws when `VITE_SUPABASE_*` are absent, which is true of hosted builds but not local ones — so it breaks production while passing locally. Verify auth changes with `bun run build` and check the built client bundle, not just `bun run dev`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#authentication) for design and [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) for the verification runbook.
 
 ## Environment & Supabase
 
