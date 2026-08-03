@@ -112,8 +112,10 @@ export function WeightPicker({
   initial?: number;
   onConfirm?: (kg: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [whole, setWhole] = useState(Math.floor(initial));
   const [decimal, setDecimal] = useState(Math.round((initial % 1) * 10));
+  const [saved, setSaved] = useState<number | null>(null);
 
   const kg = whole + decimal / 10;
 
@@ -122,42 +124,53 @@ export function WeightPicker({
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
         <h2 className="truncate text-sm font-medium text-foreground">Weight</h2>
         <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-          {kg.toFixed(1)} kg
+          {saved === null ? "No entry today" : `${saved.toFixed(1)} kg`}
         </span>
       </div>
-      <p className="mt-1.5 text-xs text-muted-foreground">Scroll to set today’s weight.</p>
 
-      <div className="relative mt-3">
-        {/* selection band */}
-        <div
-          className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-lg border-y border-border bg-muted/40"
-          style={{ height: ITEM_HEIGHT }}
-        />
-        <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-1">
-          <ScrollColumn
-            values={WHOLE}
-            value={whole}
-            onChange={setWhole}
-            ariaLabel="Kilograms"
-          />
-          <span className="font-display text-2xl text-muted-foreground">.</span>
-          <ScrollColumn
-            values={DECIMAL}
-            value={decimal}
-            onChange={setDecimal}
-            ariaLabel="Decimal of a kilogram"
-            suffix="kg"
-          />
-        </div>
-      </div>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger className="mt-3 w-full rounded-lg border border-border bg-muted/40 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
+          Add weight
+        </DialogTrigger>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle className="font-display text-lg">Add weight</DialogTitle>
+            <DialogDescription>Scroll to set today’s weight.</DialogDescription>
+          </DialogHeader>
 
-      <button
-        type="button"
-        onClick={() => onConfirm?.(kg)}
-        className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm text-primary-foreground transition-opacity hover:opacity-90"
-      >
-        Save {kg.toFixed(1)} kg
-      </button>
+          <div className="relative mt-1">
+            {/* selection band */}
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 rounded-lg border-y border-border bg-muted/40"
+              style={{ height: ITEM_HEIGHT }}
+            />
+            <div className="relative grid grid-cols-[1fr_auto_1fr] items-center gap-1">
+              <ScrollColumn values={WHOLE} value={whole} onChange={setWhole} ariaLabel="Kilograms" />
+              <span className="font-display text-2xl text-muted-foreground">.</span>
+              <ScrollColumn
+                values={DECIMAL}
+                value={decimal}
+                onChange={setDecimal}
+                ariaLabel="Decimal of a kilogram"
+                suffix="kg"
+              />
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSaved(kg);
+              onConfirm?.(kg);
+              setOpen(false);
+            }}
+            className="mt-2 w-full rounded-lg bg-primary px-4 py-2.5 text-sm text-primary-foreground transition-opacity hover:opacity-90"
+          >
+            Save {kg.toFixed(1)} kg
+          </button>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
+
