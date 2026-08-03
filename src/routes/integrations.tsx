@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
+import { WeightPicker } from "@/components/weight-picker";
+
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({
@@ -44,7 +46,9 @@ function Integrations() {
         </section>
 
         <Placeholder label="Sync status" note="Last sync times and errors." height="h-20" />
-        <Placeholder label="Manual entry forms" note="Weight, steps and screen time." height="h-24" />
+        <WeightPicker initial={80} />
+        <Placeholder label="Manual entry forms" note="Steps and screen time." height="h-24" />
+
       </div>
     </>
   );
