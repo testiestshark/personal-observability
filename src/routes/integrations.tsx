@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
+import { WeightPicker } from "@/components/weight-picker";
+
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({
