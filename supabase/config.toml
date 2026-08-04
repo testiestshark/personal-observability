@@ -1,1 +1,11 @@
-project_id = "ivdhucdiycnbgvdetagw"
+# project_id names the LOCAL stack only: it becomes the Docker container prefix
+# (supabase_db_personal_observability, etc.) so this stack is distinguishable from
+# other Supabase projects running on the same machine.
+#
+# It is NOT the link to hosted Supabase — that lives in supabase/.temp/project-ref
+# (gitignored) and still points at ivdhucdiycnbgvdetagw. Changing this value does
+# not repoint the linked project.
+#
+# Changing it again would orphan the existing Docker volume and start the local
+# database empty, so `bunx supabase db reset` is needed afterwards.
+project_id = "personal_observability"
