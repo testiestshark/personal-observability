@@ -52,3 +52,5 @@ This pattern stops being sufficient the moment any of these becomes true — not
 - **File storage is added** (e.g. photos, exports) — Supabase Storage buckets have their own RLS model, separate from table RLS, and need the same ownership thinking applied there independently.
 
 None of those apply yet. Don't build for them now — add the mechanism when one of them actually happens.
+
+This is the *how*. For the actual decided policy — no application roles, `service_role` banned from application code, and the mandatory verification step after any privilege/RLS change — see [docs/ARCHITECTURE.md § Roles and ownership policy](../docs/ARCHITECTURE.md#roles-and-ownership-policy).

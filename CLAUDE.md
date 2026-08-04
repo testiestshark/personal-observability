@@ -36,6 +36,10 @@ The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middlewa
 - Never put real credentials in `.env` or `.env.example` — only `.env.local` (gitignored).
 - `SUPABASE_SERVICE_ROLE_KEY` / `client.server.ts` bypass RLS — server-side only, never reference it with a `VITE_` prefix.
 
+## Roles and ownership
+
+No application-level roles (admin/editor/viewer) — ownership via `user_id = auth.uid()` is the only differentiation, and that's a deliberate policy, not a gap to fill in. **`supabaseAdmin` / `service_role` must never be imported from application code** (routes, server functions, middleware) — it bypasses RLS entirely, and using it in a request path silently deletes the ownership model for that query with nothing in the database to catch the mistake. Every new user-owned table must follow the pattern in [supabase/README.md](supabase/README.md) (ownership column, RLS, `anon` revoked, four policies), and every migration touching table privileges or RLS must be verified per [docs/ARCHITECTURE.md § Roles and ownership policy](docs/ARCHITECTURE.md#roles-and-ownership-policy) — this is a required step, not best-effort, and has already caught a real bug once.
+
 ## Working in this repo
 
 - This repo is synced with [Lovable](https://lovable.dev) — see `AGENTS.md`. Avoid rewriting published git history (force-push, rebase/amend/squash on pushed commits).
@@ -66,5 +70,12 @@ bunx supabase db push                         # apply to hosted, only after revi
 ```
 
 All permanent database changes must exist as version-controlled SQL migrations under `supabase/migrations/`. Local Studio is for inspection/experimentation only — it is never the source of truth.
+
+**If the change touches table privileges or RLS, verify — locally and again against hosted, since their default privileges are not guaranteed to match:**
+
+1. `anon` has no grant on the table (`information_schema.role_table_grants`, or a `curl` with the publishable key returns `42501 permission denied for table`, not `200 []`)
+2. a second real test account cannot read, insert-as, update, or delete the first account's rows, and an anonymous request sees nothing
+
+This is mandatory, not best-effort — see [docs/ARCHITECTURE.md § Roles and ownership policy](docs/ARCHITECTURE.md#roles-and-ownership-policy) for why.
 
 **Avoid two simultaneous editors.** Lovable and Claude Code must not edit the same files at the same time. Rhythm: pull latest → choose one editor → finish the change → test locally → commit and push → wait for sync → pull again before switching tools. If Lovable creates a reviewed database migration, pull that commit before continuing local database work.

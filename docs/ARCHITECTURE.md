@@ -69,6 +69,23 @@ Consequence: the generated Supabase client *is* present in the browser bundle. T
 
 For a step-by-step, repeatable procedure to verify this actually works (signup, session persistence across refresh, route protection, sign-out), see [AUTHENTICATION.md](AUTHENTICATION.md).
 
+## Roles and ownership policy
+
+Decided 2026-08-04. For the concrete table pattern and the two-gates mechanics (`GRANT`/`REVOKE` vs. RLS policies) these rules assume, see [supabase/README.md](../supabase/README.md). This section is the policy; that one is the how.
+
+**No application-level roles.** Everyone who authenticates is just "the user" — there is no admin/editor/viewer distinction, no `role`/`is_admin` column anywhere. The only differentiation in the entire schema is row ownership: `user_id = auth.uid()`. This is deliberate, not an oversight — see `supabase/README.md` for why it's a complete model for a single-user app, and the specific triggers (a second user with different powers, sharing, background writes, file storage) that would make it insufficient. None of those apply yet. Don't add a permissions column "just in case" — an unenforced flag is worse than no flag, since it looks like a security boundary without being one.
+
+If a genuine second tier is ever needed, it is **data** (a column checked inside RLS policies), not a custom Postgres role. Supabase's API layer only ever connects as one of `anon` / `authenticated` / `service_role` — there is no per-user Postgres role in this architecture, and building one means wiring a custom-claims hook, exposing the new role to PostgREST, and redoing every table's `GRANT`/`REVOKE` a second time. A column is scoped entirely to this schema and needs none of that.
+
+**`service_role` is never used in application code.** Nothing under `src/` — no route, no server function, no middleware — may import `supabaseAdmin` from `src/integrations/supabase/client.server.ts`. It stays wired up and dormant. The only legitimate use is a one-off script run by hand from a terminal for genuine admin work (backfills, manual fixes) — something a developer watches happen, not deployed code that runs unattended. Reason: `service_role` bypasses Row Level Security entirely (`BYPASSRLS`), so any query it runs skips ownership checking completely; using it inside a normal request path would silently delete the entire ownership model for that query, with nothing in the database to catch the mistake. Revisit only when a feature genuinely has no user session to scope by (e.g. a scheduled sync job with nobody signed in) — not before. Note that even the future GitHub-callback design runs inside the user's own browser session via cookies, so it does not need this either.
+
+**Mandatory verification after every migration that touches table privileges or RLS.** This is required, not best-effort — it already caught a real bug once (`weight_entries` shipped with `anon` holding table-level `SELECT`/`INSERT` on hosted that no migration asked for; typechecking and the build were both clean, only direct testing found it). After any `db push` that creates or changes a table:
+
+1. Confirm `anon` has no grant on the table — either query `information_schema.role_table_grants`, or `curl` the table with the anon/publishable key and confirm `42501 permission denied for table`, not `200 []`. A `200` with an empty array means the table is reachable and only RLS is filtering — that's one gate, not two.
+2. Confirm ownership isolation with a real second account — sign up a second test user, and confirm it cannot `select`, `insert` (as the first user), `update`, or `delete` the first user's rows. Anonymous (no session) must also see nothing.
+
+Do this locally before pushing, and again against hosted after pushing — the two environments' default privileges are not guaranteed to match (this is exactly how the `weight_entries` gap happened: `db push` runs as `postgres`, and Supabase's default privileges auto-grant more to `anon` on hosted than local ever showed).
+
 ## Database migration policy
 
 All permanent database changes must exist as version-controlled SQL migrations under `supabase/migrations/` — never hand-edited directly against either database. Workflow for a database change:
