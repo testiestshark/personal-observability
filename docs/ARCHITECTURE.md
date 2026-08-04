@@ -80,7 +80,55 @@ bunx supabase db push --dry-run               # inspect what would deploy
 bunx supabase db push                         # apply to hosted, only after review
 ```
 
-Local Studio may be used to inspect and experiment, but the repository migration files are the permanent database history. This keeps local and hosted schemas reproducible from the same source of truth. When Lovable creates a reviewed database migration, pull the resulting GitHub commit before continuing local database work. No migrations exist yet — the current milestone has no database tables (see [PRODUCT.md](PRODUCT.md)).
+Local Studio may be used to inspect and experiment, but the repository migration files are the permanent database history. This keeps local and hosted schemas reproducible from the same source of truth. When Lovable creates a reviewed database migration, pull the resulting GitHub commit before continuing local database work.
+
+### Running alongside another Supabase project on the same machine
+
+This machine also runs a work stack (`cmg_data_platform`). Both can run at once; three things keep them separate.
+
+**1. Container names.** `project_id` in `supabase/config.toml` is the Docker container prefix for the *local* stack — `supabase_db_personal_observability`, and so on. It is deliberately a readable name rather than the hosted project ref. It does **not** control which hosted project is linked: that lives in `supabase/.temp/project-ref` (gitignored) and still points at `ivdhucdiycnbgvdetagw`.
+
+Changing `project_id` orphans the existing Docker volume, so the local database comes back empty — run `bunx supabase db reset` afterwards. Always `bunx supabase stop` *before* changing it, since `stop` locates containers by the current value.
+
+**2. Ports.** The two stacks are on different ports, so neither blocks the other:
+
+| | Personal (this repo) | Work (`cmg_data_platform`) |
+|---|---|---|
+| API | 54321 | 55321 |
+| Postgres | 54322 | 55322 |
+| Studio | 54323 | 55323 |
+
+**3. CLI account.** The Supabase CLI is signed into one account at a time globally, which is what causes the 403s described below. To pin *this repo* to the right account regardless of global login state, add a personal access token to `.env.local` (gitignored):
+
+```
+SUPABASE_ACCESS_TOKEN=sbp_...
+```
+
+Bun loads `.env.local` for `bunx`, so every `bunx supabase …` run from this directory then uses that account automatically — no manual switching when moving between repos. Generate the token from the Supabase dashboard (Account → Access Tokens) while signed in as the personal account. It is a **secret**: `.env.local` only, never `.env.production` or `.env.example`.
+
+### Troubleshooting: `403 ... does not have the necessary privileges`
+
+Symptom — any command touching the *linked* project (`db push`, `db push --dry-run`, `migration list`, `projects api-keys`) fails with:
+
+```
+unexpected login role status 403: {"message":"Your account does not have the necessary privileges..."}
+```
+
+**Cause: the Supabase CLI is signed in to the wrong account**, not a real permissions problem with this project. Multiple Supabase accounts are in play on this machine. Confirm with:
+
+```powershell
+bunx supabase projects list
+```
+
+If the output lists `cmg_database` / `Loadfinder` / `UK Route Planner` — and **not** `personal-observability` — the CLI is in the wrong account context and every call against `ivdhucdiycnbgvdetagw` will 403. Sometimes simply re-running the command flips the session back; when it doesn't, re-authenticate with `bunx supabase login`.
+
+**Workaround that avoids the account problem entirely:** connect straight to Postgres, bypassing the management API, using the hosted connection string from Dashboard → Project Settings → Database:
+
+```powershell
+bunx supabase db push --db-url "postgresql://postgres:<PASSWORD>@db.ivdhucdiycnbgvdetagw.supabase.co:5432/postgres"
+```
+
+The password is a **secret** — pass it transiently, never commit it and never add it to `.env.production`. This has now cost debugging time on two separate occasions; check the account context *first*.
 
 ## Git workflow
 

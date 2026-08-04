@@ -4,6 +4,7 @@ import {
   Sparkles,
   Plug,
   NotebookPen,
+  Scale,
   Settings as SettingsIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -21,5 +22,6 @@ export const navItems: NavItem[] = [
   { to: "/insights", label: "Insights", icon: Sparkles, exact: false },
   { to: "/integrations", label: "Sources", icon: Plug, exact: false },
   { to: "/journal", label: "Journal", icon: NotebookPen, exact: false },
+  { to: "/weight", label: "Weight", icon: Scale, exact: false },
   { to: "/settings", label: "Settings", icon: SettingsIcon, exact: false },
 ];

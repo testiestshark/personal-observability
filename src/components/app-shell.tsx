@@ -45,7 +45,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur md:hidden">
-        <ul className="grid grid-cols-6">
+        {/* Column count follows navItems so adding a tab can't silently overflow.
+            Inline style rather than a Tailwind class: `grid-cols-${n}` is built
+            at runtime and would not survive Tailwind's static class scan. */}
+        <ul
+          className="grid"
+          style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}
+        >
           {navItems.map(({ to, label, icon: Icon, exact }) => (
             <li key={to} className="min-w-0">
               <Link
