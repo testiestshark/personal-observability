@@ -3,15 +3,14 @@
 // Entries are stored canonically in kilograms (see the weight_entries migration)
 // so history stays comparable across unit changes; these helpers convert at the
 // edges. Pure functions — no I/O — so they are safe on both server and client.
+//
+// New entries are kilograms only — the scroll wheel is kg, and stone would need
+// a different control shape (a 0–13 pounds column, not a decimal). lb and st are
+// kept here because rows recorded before that change still render in the unit
+// they were typed in, and the column's CHECK constraint still permits them.
 
 export const WEIGHT_UNITS = ["kg", "lb", "st"] as const;
 export type WeightUnit = (typeof WEIGHT_UNITS)[number];
-
-export const UNIT_LABELS: Record<WeightUnit, string> = {
-  kg: "Kilograms",
-  lb: "Pounds",
-  st: "Stone",
-};
 
 /** Short suffix for display, e.g. "82.4 kg". */
 export const UNIT_SUFFIX: Record<WeightUnit, string> = {
@@ -22,10 +21,6 @@ export const UNIT_SUFFIX: Record<WeightUnit, string> = {
 
 const LB_PER_KG = 2.2046226218487757;
 const LB_PER_STONE = 14;
-
-export function isWeightUnit(value: unknown): value is WeightUnit {
-  return typeof value === "string" && (WEIGHT_UNITS as readonly string[]).includes(value);
-}
 
 /** Convert a value the user typed in `unit` into canonical kilograms. */
 export function toKilograms(value: number, unit: WeightUnit): number {

@@ -5,21 +5,8 @@ import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  formatUkDateTime,
-  formatWeight,
-  isWeightUnit,
-  UNIT_LABELS,
-  WEIGHT_UNITS,
-  type WeightUnit,
-} from "@/lib/weight/units";
+import { WeightWheel } from "@/components/weight-picker";
+import { formatUkDateTime, formatWeight } from "@/lib/weight/units";
 import {
   addWeightEntry,
   deleteWeightEntry,
@@ -49,12 +36,20 @@ function nowForDateTimeInput(): string {
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
 }
 
+/**
+ * Where the wheel starts when there is nothing to go on. Only used for a first
+ * ever entry — after that the most recent weigh-in is the far better guess.
+ */
+const DEFAULT_KG = 80;
+
 function Weight() {
   const router = useRouter();
   const entries = Route.useLoaderData();
 
-  const [weight, setWeight] = useState("");
-  const [unit, setUnit] = useState<WeightUnit>("kg");
+  // Entries come back newest first, so the head is the last recorded weight.
+  const lastWeightKg = entries[0]?.weightKg ?? DEFAULT_KG;
+
+  const [weightKg, setWeightKg] = useState(() => Number(lastWeightKg.toFixed(1)));
   const [recordedAt, setRecordedAt] = useState(nowForDateTimeInput);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,16 +60,10 @@ function Weight() {
     setError(null);
 
     try {
-      const parsed = Number(weight);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        setError("Enter a weight greater than zero.");
-        return;
-      }
-
       const result = await addWeightEntry({
         data: {
-          weight: parsed,
-          unit,
+          weight: weightKg,
+          unit: "kg",
           // The picker gives wall-clock time with no zone; the Date constructor
           // reads it in the device's zone, giving the correct instant to store.
           recordedAt: new Date(recordedAt).toISOString(),
@@ -86,7 +75,8 @@ function Weight() {
         return;
       }
 
-      setWeight("");
+      // The wheel stays where it was left — the next weigh-in is nearly always
+      // near the last one — but the timestamp rolls forward to now.
       setRecordedAt(nowForDateTimeInput());
       await router.invalidate();
     } catch {
@@ -110,7 +100,7 @@ function Weight() {
       <PageHeader
         eyebrow="Weight"
         title="What you weighed"
-        subtitle="Recorded in UK time. Enter in whichever unit you prefer."
+        subtitle="Recorded in UK time, in kilograms."
       />
 
       <div className="grid gap-4">
@@ -118,44 +108,14 @@ function Weight() {
           <h2 className="text-sm font-medium">Add an entry</h2>
 
           <form onSubmit={handleSubmit} className="mt-3 grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
-              <div className="grid gap-2">
-                <Label htmlFor="weight">Weight</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  min="0"
-                  required
-                  placeholder="0.0"
-                  value={weight}
-                  onChange={(event) => setWeight(event.target.value)}
-                  disabled={pending}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="unit">Unit</Label>
-                <Select
-                  value={unit}
-                  onValueChange={(value) => {
-                    if (isWeightUnit(value)) setUnit(value);
-                  }}
-                  disabled={pending}
-                >
-                  <SelectTrigger id="unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WEIGHT_UNITS.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {UNIT_LABELS[value]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid gap-2">
+              <Label>Weight</Label>
+              <WeightWheel
+                value={weightKg}
+                onChange={setWeightKg}
+                disabled={pending}
+                ariaLabel="Weight in kilograms"
+              />
             </div>
 
             <div className="grid gap-2">
@@ -167,6 +127,11 @@ function Weight() {
                 value={recordedAt}
                 onChange={(event) => setRecordedAt(event.target.value)}
                 disabled={pending}
+                // A native datetime-local lays its shadow-DOM field out on the
+                // baseline, so inside the Input's flex box it sits high and reads
+                // as a different height from every other control. Centring the
+                // flex child lines it up with the rest of the form.
+                className="items-center [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60"
               />
             </div>
 
@@ -181,7 +146,7 @@ function Weight() {
               disabled={pending}
               className="w-full sm:w-auto sm:justify-self-start"
             >
-              {pending ? "Saving…" : "Save entry"}
+              {pending ? "Saving…" : `Save ${weightKg.toFixed(1)} kg`}
             </Button>
           </form>
         </section>
