@@ -77,18 +77,31 @@ export function PageHeader({
   subtitle,
   eyebrow,
 }: {
-  title: string;
+  title?: string;
   subtitle?: string;
   eyebrow?: string;
 }) {
+  // A page may carry just an eyebrow when a full title would only restate it.
+  // The eyebrow is promoted to the h1 in that case, keeping its small-caps look
+  // but leaving the page with a real heading rather than none at all.
+  const eyebrowIsHeading = !title;
+
   return (
-    <header className="mb-7">
+    <header className={title || subtitle ? "mb-7" : "mb-5"}>
       {eyebrow ? (
-        <p className="mb-2 text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
-          {eyebrow}
-        </p>
+        eyebrowIsHeading ? (
+          <h1 className="text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
+            {eyebrow}
+          </h1>
+        ) : (
+          <p className="mb-2 text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
+            {eyebrow}
+          </p>
+        )
       ) : null}
-      <h1 className="font-display text-2xl leading-tight text-foreground md:text-3xl">{title}</h1>
+      {title ? (
+        <h1 className="font-display text-2xl leading-tight text-foreground md:text-3xl">{title}</h1>
+      ) : null}
       {subtitle ? <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p> : null}
     </header>
   );

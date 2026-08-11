@@ -28,7 +28,9 @@ function ScrollColumn({
   value: number;
   onChange: (next: number) => void;
   ariaLabel: string;
-  disabled?: boolean;
+  // Explicitly `| undefined`: exactOptionalPropertyTypes is on, so an optional
+  // prop otherwise refuses a value that is merely possibly undefined.
+  disabled?: boolean | undefined;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const settle = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,7 +143,7 @@ export function WeightWheel({
 }: {
   value: number;
   onChange: (kilograms: number) => void;
-  disabled?: boolean;
+  disabled?: boolean | undefined;
   ariaLabel?: string;
 }) {
   const whole = Math.floor(value);
