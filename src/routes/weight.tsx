@@ -210,7 +210,7 @@ function Weight() {
             </p>
           ) : (
             <ul className="mt-2">
-              {entries.map((entry) => (
+              {entries.map((entry: WeightEntry) => (
                 <li
                   key={entry.id}
                   className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border py-3 last:border-0"
