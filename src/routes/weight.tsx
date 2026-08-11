@@ -6,25 +6,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { WeightCalendar } from "@/components/weight-calendar";
+import { WeightWheel } from "@/components/weight-picker";
 import {
+  currentLondonDay,
+  currentLondonMonth,
   formatUkDateTime,
   formatWeight,
-  isWeightUnit,
-  UNIT_LABELS,
-  WEIGHT_UNITS,
-  type WeightUnit,
 } from "@/lib/weight/units";
 import {
   addWeightEntry,
   deleteWeightEntry,
+  listMonthWeights,
   listWeightEntries,
 } from "@/lib/weight/weight.functions";
+
+const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 export const Route = createFileRoute("/weight")({
   head: () => ({
@@ -33,31 +36,48 @@ export const Route = createFileRoute("/weight")({
       { name: "description", content: "Record and review your weight over time." },
     ],
   }),
-  // Loaded server-side, so the list is present on first paint.
-  loader: () => listWeightEntries(),
+  // The displayed month lives in the URL, so browser back/forward steps through
+  // months and a refresh keeps you where you were.
+  validateSearch: (search: Record<string, unknown>): { month: string } => {
+    const month = search["month"];
+    return {
+      month: typeof month === "string" && MONTH_PATTERN.test(month) ? month : currentLondonMonth(),
+    };
+  },
+  loaderDeps: ({ search: { month } }) => ({ month }),
+  // Loaded server-side, so the list and grid are present on first paint.
+  loader: async ({ deps: { month } }) => ({
+    entries: await listWeightEntries(),
+    days: await listMonthWeights({ data: { month } }),
+  }),
   component: Weight,
 });
 
 /**
- * `datetime-local` needs "YYYY-MM-DDTHH:mm" in the device's own time zone —
- * toISOString() would return UTC and silently shift the prefilled time during
- * British Summer Time.
+ * Where the wheel starts when there is nothing to go on. Only used for a first
+ * ever entry — after that the most recent weigh-in is the far better guess.
  */
-function nowForDateTimeInput(): string {
-  const now = new Date();
-  const offsetMs = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16);
-}
+const DEFAULT_KG = 80;
 
 function Weight() {
   const router = useRouter();
-  const entries = Route.useLoaderData();
+  const navigate = Route.useNavigate();
+  const { month } = Route.useSearch();
+  const { entries, days } = Route.useLoaderData();
 
-  const [weight, setWeight] = useState("");
-  const [unit, setUnit] = useState<WeightUnit>("kg");
-  const [recordedAt, setRecordedAt] = useState(nowForDateTimeInput);
+  // Entries come back newest first, so the head is the last recorded weight.
+  const lastWeightKg = entries[0]?.weightKg ?? DEFAULT_KG;
+
+  const [open, setOpen] = useState(false);
+  const [weightKg, setWeightKg] = useState(() => Number(lastWeightKg.toFixed(1)));
+  // A weigh-in is a day, not an instant — at most one per day.
+  const [day, setDay] = useState(currentLondonDay);
   const [pending, setPending] = useState(false);
+  // Two separate errors: the form's belongs inside the dialog, but a failed
+  // delete happens out on the page and would never be seen if it shared that
+  // state — the dialog is shut, and opening it clears the message anyway.
   const [error, setError] = useState<string | null>(null);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,29 +85,14 @@ function Weight() {
     setError(null);
 
     try {
-      const parsed = Number(weight);
-      if (!Number.isFinite(parsed) || parsed <= 0) {
-        setError("Enter a weight greater than zero.");
-        return;
-      }
-
-      const result = await addWeightEntry({
-        data: {
-          weight: parsed,
-          unit,
-          // The picker gives wall-clock time with no zone; the Date constructor
-          // reads it in the device's zone, giving the correct instant to store.
-          recordedAt: new Date(recordedAt).toISOString(),
-        },
-      });
+      const result = await addWeightEntry({ data: { weight: weightKg, day } });
 
       if (result.error) {
         setError(result.error);
         return;
       }
 
-      setWeight("");
-      setRecordedAt(nowForDateTimeInput());
+      setOpen(false);
       await router.invalidate();
     } catch {
       setError("Could not save that entry. Please try again.");
@@ -96,98 +101,107 @@ function Weight() {
     }
   }
 
-  async function handleDelete(id: string) {
-    const result = await deleteWeightEntry({ data: { id } });
-    if (result.error) {
-      setError(result.error);
-      return;
+  function handleOpenChange(next: boolean) {
+    if (next) {
+      // Reopening is a fresh attempt: default to today rather than whenever the
+      // page was loaded, and clear any error left over from a previous try. The
+      // wheel deliberately keeps its position — consecutive weigh-ins are close.
+      setDay(currentLondonDay());
+      setError(null);
     }
+    setOpen(next);
+  }
+
+  /** Returns an error message, or null once the entry is gone and data refreshed. */
+  async function handleDelete(id: string): Promise<string | null> {
+    const result = await deleteWeightEntry({ data: { id } });
+    if (result.error) return result.error;
     await router.invalidate();
+    return null;
+  }
+
+  // The calendar surfaces its own failures inside the confirmation dialog; the
+  // History list has nowhere to put one, so it gets a line of its own.
+  async function handleHistoryDelete(id: string) {
+    setHistoryError(await handleDelete(id));
   }
 
   return (
     <>
-      <PageHeader
-        eyebrow="Weight"
-        title="What you weighed"
-        subtitle="Recorded in UK time. Enter in whichever unit you prefer."
-      />
+      <PageHeader eyebrow="Weight" />
 
       <div className="grid gap-4">
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-medium">Add an entry</h2>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
+          <DialogTrigger asChild>
+            <Button className="w-full sm:w-auto sm:justify-self-start">Add an entry</Button>
+          </DialogTrigger>
 
-          <form onSubmit={handleSubmit} className="mt-3 grid gap-4">
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem]">
+          <DialogContent className="max-w-xs">
+            <DialogHeader>
+              <DialogTitle className="font-display text-lg">Add an entry</DialogTitle>
+            </DialogHeader>
+
+            <form onSubmit={handleSubmit} className="grid gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="weight">Weight</Label>
-                <Input
-                  id="weight"
-                  type="number"
-                  inputMode="decimal"
-                  step="0.1"
-                  min="0"
-                  required
-                  placeholder="0.0"
-                  value={weight}
-                  onChange={(event) => setWeight(event.target.value)}
+                <Label>Weight</Label>
+                <WeightWheel
+                  value={weightKg}
+                  onChange={setWeightKg}
                   disabled={pending}
+                  ariaLabel="Weight in kilograms"
                 />
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="unit">Unit</Label>
-                <Select
-                  value={unit}
-                  onValueChange={(value) => {
-                    if (isWeightUnit(value)) setUnit(value);
-                  }}
+                <Label htmlFor="recorded-on">Date</Label>
+                <Input
+                  id="recorded-on"
+                  type="date"
+                  required
+                  value={day}
+                  // Nothing can be weighed in the future.
+                  max={currentLondonDay()}
+                  onChange={(event) => setDay(event.target.value)}
                   disabled={pending}
-                >
-                  <SelectTrigger id="unit">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {WEIGHT_UNITS.map((value) => (
-                      <SelectItem key={value} value={value}>
-                        {UNIT_LABELS[value]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  // A native date field lays its shadow-DOM contents out on the
+                  // baseline, so inside the Input's flex box it sits high and reads
+                  // as a different height from every other control. Centring the
+                  // flex child lines it up with the rest of the form.
+                  className="items-center [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60"
+                />
               </div>
-            </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="recorded-at">Date and time</Label>
-              <Input
-                id="recorded-at"
-                type="datetime-local"
-                required
-                value={recordedAt}
-                onChange={(event) => setRecordedAt(event.target.value)}
-                disabled={pending}
-              />
-            </div>
+              {error ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              ) : null}
 
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
+              <Button type="submit" disabled={pending} className="w-full">
+                {pending ? "Saving…" : `Save ${weightKg.toFixed(1)} kg`}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-            <Button
-              type="submit"
-              disabled={pending}
-              className="w-full sm:w-auto sm:justify-self-start"
-            >
-              {pending ? "Saving…" : "Save entry"}
-            </Button>
-          </form>
-        </section>
+        <WeightCalendar
+          month={month}
+          days={days}
+          today={currentLondonDay()}
+          onMonthChange={(next) => navigate({ search: { month: next } })}
+          onDelete={handleDelete}
+          // Nothing is ever recorded in the future, so there is nowhere to go.
+          canGoForward={month < currentLondonMonth()}
+        />
 
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">History</h2>
+
+          {historyError ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {historyError}
+            </p>
+          ) : null}
 
           {entries.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -210,7 +224,7 @@ function Weight() {
                     variant="ghost"
                     size="sm"
                     className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(entry.id)}
+                    onClick={() => handleHistoryDelete(entry.id)}
                     aria-label={`Delete entry from ${formatUkDateTime(entry.recordedAt)}`}
                   >
                     Delete
