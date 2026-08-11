@@ -25,6 +25,7 @@ import {
   deleteWeightEntry,
   listMonthWeights,
   listWeightEntries,
+  type WeightEntry,
 } from "@/lib/weight/weight.functions";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
