@@ -17,7 +17,7 @@ import { WeightWheel } from "@/components/weight-picker";
 import {
   currentLondonDay,
   currentLondonMonth,
-  formatUkDateTime,
+  formatEntryDay,
   formatWeight,
 } from "@/lib/weight/units";
 import {
@@ -216,7 +216,7 @@ function Weight() {
                   className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border py-3 last:border-0"
                 >
                   <span className="truncate text-sm text-muted-foreground">
-                    {formatUkDateTime(entry.recordedAt)}
+                    {formatEntryDay(entry.recordedAt)}
                   </span>
                   <span className="shrink-0 text-sm tabular-nums text-foreground">
                     {formatWeight(entry.weightKg, entry.unit)}
@@ -226,7 +226,7 @@ function Weight() {
                     size="sm"
                     className="shrink-0 text-muted-foreground hover:text-destructive"
                     onClick={() => handleHistoryDelete(entry.id)}
-                    aria-label={`Delete entry from ${formatUkDateTime(entry.recordedAt)}`}
+                    aria-label={`Delete entry from ${formatEntryDay(entry.recordedAt)}`}
                   >
                     Delete
                   </Button>

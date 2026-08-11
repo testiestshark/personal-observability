@@ -51,27 +51,6 @@ export function formatWeight(kilograms: number, unit: WeightUnit): string {
   return `${fromKilograms(kilograms, unit).toFixed(1)} ${UNIT_SUFFIX[unit]}`;
 }
 
-const UK_DATE_TIME = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/London",
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
-/**
- * Format an instant as UK date and time.
- *
- * Timestamps are stored as UTC; using an explicit Europe/London time zone means
- * GMT/BST is applied correctly for the date in question rather than assuming the
- * viewing device is set to UK time.
- */
-export function formatUkDateTime(isoTimestamp: string): string {
-  return UK_DATE_TIME.format(new Date(isoTimestamp));
-}
-
 // en-CA renders as YYYY-MM-DD, which sorts lexicographically and slices cleanly
 // into a YYYY-MM month key.
 const LONDON_DAY = new Intl.DateTimeFormat("en-CA", {
@@ -129,6 +108,19 @@ const LONDON_DATE_LABEL = new Intl.DateTimeFormat("en-GB", {
 
 export function formatDayLabel(day: string): string {
   return LONDON_DATE_LABEL.format(new Date(londonDayToInstant(day)));
+}
+
+/**
+ * Format a stored weigh-in as the day it belongs to, e.g. "Thu, 06 Aug 2026".
+ *
+ * A weigh-in is a day, not an instant. Entries are written at noon UTC (see
+ * londonDayToInstant), so displaying a time would show an artefact of that
+ * choice rather than anything the user recorded — every row would read 12:00 or
+ * 13:00 depending on the season. Going through londonDayKey also keeps this
+ * agreeing with the calendar, which labels the same entry from the same helper.
+ */
+export function formatEntryDay(isoTimestamp: string): string {
+  return formatDayLabel(londonDayKey(isoTimestamp));
 }
 
 /**
