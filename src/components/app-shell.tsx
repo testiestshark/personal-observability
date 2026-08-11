@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <div className="md:pl-60">
-        <main className="mx-auto w-full max-w-2xl px-5 pt-8 pb-28 md:max-w-3xl md:pb-12">
+        <main className="mx-auto w-full max-w-2xl px-5 pt-10 pb-28 md:max-w-3xl md:pt-8 md:pb-12">
           {children}
         </main>
       </div>
