@@ -19,6 +19,14 @@ export type WeightEntry = {
 const MIN_KG = 0.5;
 const MAX_KG = 1000;
 
+// How many weigh-ins the History list will show. A cap exists only to bound the
+// size of the server-rendered payload — it is not a page size, and there is no
+// "load more", so anything past it is simply invisible in History (the calendar
+// still shows every month). Set high enough that a lifetime of daily weigh-ins
+// fits: a backfilled history of several years is a few hundred rows, not a few
+// thousand.
+const HISTORY_LIMIT = 2000;
+
 const newEntrySchema = z.object({
   weight: z.number().finite().positive("Enter a weight greater than zero."),
   day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected a YYYY-MM-DD day."),
@@ -74,7 +82,7 @@ export const listWeightEntries = createServerFn({ method: "GET" }).handler(
       .select("id, recorded_at, weight_kg, entered_unit")
       .eq("user_id", userId)
       .order("recorded_at", { ascending: false })
-      .limit(200);
+      .limit(HISTORY_LIMIT);
 
     if (error) throw new Error(error.message);
 

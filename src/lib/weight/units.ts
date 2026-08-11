@@ -12,6 +12,13 @@
 export const WEIGHT_UNITS = ["kg", "lb", "st"] as const;
 export type WeightUnit = (typeof WEIGHT_UNITS)[number];
 
+// Mirrors the CHECK constraints in the weight_entries migration, so a bad value
+// produces a readable message instead of a raw Postgres constraint violation.
+// Here rather than beside the server functions so the CSV parser can reject an
+// out-of-range row in the browser, before an import is ever submitted.
+export const MIN_KG = 0.5;
+export const MAX_KG = 1000;
+
 /** Short suffix for display, e.g. "82.4 kg". */
 export const UNIT_SUFFIX: Record<WeightUnit, string> = {
   kg: "kg",
