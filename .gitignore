@@ -16,6 +16,9 @@ dist-ssr
 .nitro
 *.local
 
+# Test coverage output (bun run test:coverage)
+coverage
+
 # Environment variables (real credentials — use .env.example for the template)
 .env
 

@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
 
-
 export const Route = createFileRoute("/integrations")({
   head: () => ({
     meta: [

@@ -6,7 +6,9 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", ".output", ".vinxi"] },
+  // supabase/.temp holds the CLI's vendored edge-runtime sources, which are not
+  // ours to lint or format; coverage/ and .nitro are build output.
+  { ignores: ["dist", ".output", ".vinxi", ".nitro", "coverage", "supabase/.temp"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

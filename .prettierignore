@@ -2,6 +2,15 @@ node_modules
 dist
 .output
 .vinxi
+.nitro
+coverage
+
+# The Supabase CLI's vendored edge-runtime sources — not ours to format.
+supabase/.temp
+
+# Lovable regenerates the block between its BEGIN/END markers; reformatting it
+# here only creates churn to be undone on the next sync.
+AGENTS.md
 pnpm-lock.yaml
 package-lock.json
 bun.lock

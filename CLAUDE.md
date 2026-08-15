@@ -6,6 +6,25 @@ Guidance for Claude Code (and other agents) working in this repository.
 
 Personal Observability — a private, single-user web app for tracking personal data (GitHub activity, Strava, steps, weight, computer activity, screen time, mood/energy/focus, journal entries, weekly reviews). See [docs/PRODUCT.md](docs/PRODUCT.md) for scope and [docs/ROADMAP.md](docs/ROADMAP.md) for what's built vs planned.
 
+## What to work on
+
+**[docs/backlog.md](docs/backlog.md) is the source of truth for outstanding work.** When
+you are asked to do something specific, do that. When you are not — "what's next?", "pick
+something up", or any open-ended request — read the backlog and take the highest-priority
+item, rather than inventing work or guessing from the code.
+
+Keep it current as part of the job, not as a separate chore:
+
+- Finished an item? **Delete it** from the backlog in the same commit as the work. Git
+  history is the record of what was done; a file of struck-through lines stops being read.
+- Found a problem you are not fixing right now? Add it, with the reasoning and a link to
+  the file or commit it came from. A finding that only exists in a chat transcript is lost.
+- Decided _not_ to do something? Put it under "Deliberate non-goals" with the date and the
+  why, so it is not raised again later as an oversight.
+
+[docs/ROADMAP.md](docs/ROADMAP.md) stays coarse — milestones and data domains. Concrete,
+pick-up-able tasks belong in the backlog.
+
 ## Stack
 
 TanStack Start (React 19) + Vite, Tailwind v4, Supabase (Postgres/Auth/Storage). Package manager is **Bun** — use `bun`/`bunx`, not `npm`/`npx`.
@@ -17,9 +36,29 @@ bun install       # install dependencies
 bun run dev       # start dev server (restart after changing env vars)
 bun run build     # production build
 bun run lint      # eslint
+bun run typecheck # tsc --noEmit
+bun run test      # vitest, single run
+bun run test:watch    # vitest in watch mode
+bun run test:coverage # coverage report
 bun run format    # prettier --write
+bun run format:check  # prettier --check (what CI runs)
+bun run verify    # lint + typecheck + test + build — the full CI gate, locally
 bunx supabase start / status / stop   # local Supabase stack (requires Docker running)
 ```
+
+## Testing and CI
+
+Vitest + Testing Library, with tests beside the code as `*.test.ts` / `*.test.tsx`.
+[.github/workflows/ci.yml](.github/workflows/ci.yml) runs lint, format check, typecheck,
+test and build on every pull request and every push to `main`.
+
+**Run `bun run verify` before pushing** — it is the same sequence CI runs, so green
+locally means green on GitHub.
+
+New behaviour needs a test, and a bug fix needs a test that fails without the fix. Prefer
+testing pure logic: this codebase's real defects have been in date/timezone and parsing
+code, not in the UI. Conventions, and what jsdom cannot do, are in
+[docs/TESTING.md](docs/TESTING.md) — read it before writing tests.
 
 ## Authentication
 
