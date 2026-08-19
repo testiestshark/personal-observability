@@ -48,12 +48,6 @@ same component guards this with `next !== value`. Harmless today (the parent set
 identical state) but inconsistent. Behaviour is pinned by tests in
 `weight-picker.test.tsx`, so changing it will require updating those two expectations.
 
-### History has a hard cap with no "load more"
-
-`HISTORY_LIMIT` in `weight.functions.ts` is 2000 rows. Beyond that, entries are simply
-invisible in the History list — the calendar still shows them. Fine for years of daily
-weigh-ins; worth revisiting only if the list ever gets near it.
-
 ---
 
 ## Deliberate non-goals
@@ -81,6 +75,8 @@ Recorded so they are not raised again as gaps.
   the next regeneration. `react-refresh/only-export-components` is switched off for
   that path in `eslint.config.js` instead, and remains on everywhere else.
 
+- **Pagination or "load more" for the weigh-in History list.** Settled on 2026-08-19.
+  `HISTORY_LIMIT` is 10,000 rows — about 27 years of daily weigh-ins. Closed, not a gap.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
   and component tests cannot — but it needs Docker in CI, runs in minutes rather than
