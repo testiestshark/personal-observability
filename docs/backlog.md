@@ -80,19 +80,6 @@ across at least four commits (`90c882d`, `611cdc6`, `d2b5f4e`, `bf7ed9e`), all t
 "Changes". Either gitignore it, or find which tool removes the block and stop it —
 right now it produces meaningless diffs and will produce spurious CI churn.
 
-### Land or retire the GitHub integration spec
-
-[ROADMAP.md](ROADMAP.md) links `docs/integrations/GITHUB.md`, **which does not exist on
-`main`.** The 266-line spec lives only on the unmerged `feature/github-integration`
-branch. Either merge that branch (it is docs-only, so it is safe) or drop the link.
-Right now the roadmap points at nothing.
-
-### Prune merged branches
-
-`feature/weight-tracker`, `feature/weight-scroll-picker`, `feature/weight-csv-backfill`,
-`chore/rls-table-privileges` and `docs/roles-ownership-policy` are all merged into `main`
-and still present locally and on `origin`.
-
 ---
 
 ## Low

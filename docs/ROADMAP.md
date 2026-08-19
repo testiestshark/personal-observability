@@ -14,7 +14,7 @@ The coarse view: milestones and data domains. **Concrete, pick-up-able tasks liv
 
 ## Next
 
-- GitHub integration milestone 1 — "Connect GitHub"; auth, its blocking dependency, is in place. The spec (`docs/integrations/GITHUB.md`) is **not yet on `main`** — it sits on the `feature/github-integration` branch, which needs merging or dropping (see [backlog.md](backlog.md)).
+- GitHub integration milestone 1 — "Connect GitHub"; auth, its blocking dependency, is in place. The spec is [docs/integrations/GITHUB.md](integrations/GITHUB.md) — design only, no code or migrations yet.
 - Close public signup now the owner account exists — dashboard only, see [backlog.md](backlog.md).
 - Finish the weight domain: in-app CSV import, and a trend view rather than only a list.
 
