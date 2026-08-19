@@ -3,7 +3,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-import { londonDayKey, londonDayToInstant, parseMonthKey, type WeightUnit } from "./units";
+import {
+  londonDayKey,
+  londonDayToInstant,
+  MAX_KG,
+  MIN_KG,
+  parseMonthKey,
+  type WeightUnit,
+} from "./units";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -13,11 +20,6 @@ export type WeightEntry = {
   weightKg: number;
   unit: WeightUnit;
 };
-
-// Mirrors the CHECK constraints in the weight_entries migration, so a bad value
-// produces a readable message instead of a raw Postgres constraint violation.
-const MIN_KG = 0.5;
-const MAX_KG = 1000;
 
 // How many weigh-ins the History list will show. A cap exists only to bound the
 // size of the server-rendered payload — it is not a page size, and there is no

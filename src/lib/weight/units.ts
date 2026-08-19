@@ -12,10 +12,15 @@
 export const WEIGHT_UNITS = ["kg", "lb", "st"] as const;
 export type WeightUnit = (typeof WEIGHT_UNITS)[number];
 
-// Mirrors the CHECK constraints in the weight_entries migration, so a bad value
+// The single source in TypeScript for the sanity bounds on weight_entries.weight_kg,
+// mirroring the CHECK constraint in the create_weight_entries migration so a bad value
 // produces a readable message instead of a raw Postgres constraint violation.
-// Here rather than beside the server functions so the CSV parser can reject an
-// out-of-range row in the browser, before an import is ever submitted.
+//
+// Both are EXCLUSIVE, matching the SQL `weight_kg > 0.5 and weight_kg < 1000`.
+// They live here, in the pure leaf module, because weight.functions.ts already imports
+// from it — so this adds no new dependency edge. units.test.ts reads the migration and
+// fails if these drift from it: the numbers existing in two languages is the part that
+// cannot be designed away, so it is pinned instead.
 export const MIN_KG = 0.5;
 export const MAX_KG = 1000;
 
