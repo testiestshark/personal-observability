@@ -24,10 +24,11 @@ export type WeightEntry = {
 // How many weigh-ins the History list will show. A cap exists only to bound the
 // size of the server-rendered payload — it is not a page size, and there is no
 // "load more", so anything past it is simply invisible in History (the calendar
-// still shows every month). Set high enough that a lifetime of daily weigh-ins
-// fits: a backfilled history of several years is a few hundred rows, not a few
-// thousand.
-const HISTORY_LIMIT = 2000;
+// still shows every month).
+//
+// 10,000 is roughly 27 years of daily weigh-ins, so it is not a limit this app
+// will meet. Deliberately settled rather than solved: no pagination is planned.
+const HISTORY_LIMIT = 10000;
 
 const newEntrySchema = z.object({
   weight: z.number().finite().positive("Enter a weight greater than zero."),
