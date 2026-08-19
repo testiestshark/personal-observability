@@ -39,20 +39,7 @@ piece of the app that would justify a shared chart component.
 
 ## Low
 
-### `WeightWheel`'s keyboard step has no "did it change" guard
-
-In [`weight-picker.tsx`](../src/components/weight-picker.tsx), `step()` clamps its index
-at either end of a column and then calls `onChange` regardless — so an arrow key at the
-top of the list fires a change with the value that was already set. `handleScroll` in the
-same component guards this with `next !== value`. Harmless today (the parent sets
-identical state) but inconsistent. Behaviour is pinned by tests in
-`weight-picker.test.tsx`, so changing it will require updating those two expectations.
-
-### `react-refresh/only-export-components` warnings
-
-Six warnings, all in vendored shadcn files under `src/components/ui/`. They do not fail
-the build or CI. Either fix upstream-style by splitting the constant exports out, or
-silence the rule for that directory — but not worth doing on its own.
+_Nothing outstanding._
 
 ---
 
@@ -76,6 +63,11 @@ Recorded so they are not raised again as gaps.
   come from the PWA daily. `src/lib/weight/csv.ts`, its test and
   `scripts/import-weights.ts` were deleted rather than left as ~856 lines with no
   callers. Recoverable from git history if a bulk import is ever needed again.
+- **Splitting the non-component exports out of `src/components/ui/`.** Decided on
+  2026-08-19. That directory is vendored shadcn code; its CLI would undo the split on
+  the next regeneration. `react-refresh/only-export-components` is switched off for
+  that path in `eslint.config.js` instead, and remains on everywhere else.
+
 - **Pagination or "load more" for the weigh-in History list.** Settled on 2026-08-19.
   `HISTORY_LIMIT` is 10,000 rows — about 27 years of daily weigh-ins. Closed, not a gap.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright

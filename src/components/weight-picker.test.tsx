@@ -98,11 +98,10 @@ describe("WeightWheel", () => {
       expect(onChange).toHaveBeenCalledWith(82.5);
     });
 
-    // At either end the index is clamped, so the value does not move. Note that
-    // onChange still fires, with the unchanged value — step() has no
-    // "did it actually change" guard, where handleScroll does. Harmless (the
-    // parent sets identical state) but inconsistent; see docs/backlog.md.
-    it("does not move past the top of a column", async () => {
+    // At either end the index is clamped, so the value does not move — and a key
+    // press that moved nothing must not report a change, matching what scrolling
+    // does. Holding the key down at the end of a column stays silent.
+    it("reports nothing when already at the top of a column", async () => {
       const user = userEvent.setup();
       // 20 kg is the first whole value offered.
       const { onChange } = renderWheel(20.4);
@@ -110,17 +109,29 @@ describe("WeightWheel", () => {
       column("Kilograms").focus();
       await user.keyboard("{ArrowUp}");
 
-      expect(onChange).toHaveBeenCalledWith(20.4);
+      expect(onChange).not.toHaveBeenCalled();
     });
 
-    it("does not move past the bottom of a column", async () => {
+    it("reports nothing when already at the bottom of a column", async () => {
       const user = userEvent.setup();
       const { onChange } = renderWheel(82.9);
 
       column("Decimal fraction of a kilogram").focus();
       await user.keyboard("{ArrowDown}");
 
-      expect(onChange).toHaveBeenCalledWith(82.9);
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("keeps reporting real moves after a press that hit the end", async () => {
+      const user = userEvent.setup();
+      const { onChange } = renderWheel(20.4);
+
+      column("Kilograms").focus();
+      await user.keyboard("{ArrowUp}");
+      await user.keyboard("{ArrowDown}");
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith(21.4);
     });
   });
 
