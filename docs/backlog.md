@@ -39,14 +39,7 @@ piece of the app that would justify a shared chart component.
 
 ## Low
 
-### `WeightWheel`'s keyboard step has no "did it change" guard
-
-In [`weight-picker.tsx`](../src/components/weight-picker.tsx), `step()` clamps its index
-at either end of a column and then calls `onChange` regardless — so an arrow key at the
-top of the list fires a change with the value that was already set. `handleScroll` in the
-same component guards this with `next !== value`. Harmless today (the parent sets
-identical state) but inconsistent. Behaviour is pinned by tests in
-`weight-picker.test.tsx`, so changing it will require updating those two expectations.
+_Nothing outstanding._
 
 ---
 
