@@ -19,7 +19,6 @@ Tests sit next to the code they cover, as `*.test.ts` / `*.test.tsx`:
 
 ```
 src/lib/weight/units.ts        src/lib/weight/units.test.ts
-src/lib/weight/csv.ts          src/lib/weight/csv.test.ts
 src/components/weight-picker.tsx   src/components/weight-picker.test.tsx
 ```
 
