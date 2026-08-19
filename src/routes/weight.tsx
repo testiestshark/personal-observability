@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { WeightCalendar } from "@/components/weight-calendar";
+import { WeightTrend } from "@/components/weight-trend";
 import { WeightWheel } from "@/components/weight-picker";
 import {
   currentLondonDay,
@@ -195,6 +196,7 @@ function Weight() {
           canGoForward={month < currentLondonMonth()}
         />
 
+        <WeightTrend entries={entries} />
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">History</h2>
 
