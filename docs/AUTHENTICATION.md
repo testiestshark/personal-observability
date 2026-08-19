@@ -19,7 +19,7 @@ bun run dev
 
 `supabase status` should report `API_URL` as `http://127.0.0.1:54321`. `bun run dev` prints a `Local:` URL — these steps assume `http://localhost:8080`; use whatever port it actually printed if 8080 was in use.
 
-If you want a *truly* clean slate (no leftover test users from a previous run):
+If you want a _truly_ clean slate (no leftover test users from a previous run):
 
 ```powershell
 bunx supabase db reset
@@ -76,19 +76,19 @@ Open Supabase Studio at `http://127.0.0.1:54323` → Authentication → Users. T
 
 ## What each step is actually proving
 
-| Step | Proves |
-|---|---|
-| 1 | Server-side route protection works before any React renders |
-| 2 | Sign-up writes a real Supabase Auth user, session cookie is set |
-| 3 | SSR can read the session (no `localStorage` involved) |
-| 4 | Session survives a full page reload — cookie-based, not memory-based |
-| 5 | Protection is bidirectional (signed-in users can't see `/login`) |
-| 6 | Sign-out clears the server-recognized session, not just UI state |
+| Step | Proves                                                               |
+| ---- | -------------------------------------------------------------------- |
+| 1    | Server-side route protection works before any React renders          |
+| 2    | Sign-up writes a real Supabase Auth user, session cookie is set      |
+| 3    | SSR can read the session (no `localStorage` involved)                |
+| 4    | Session survives a full page reload — cookie-based, not memory-based |
+| 5    | Protection is bidirectional (signed-in users can't see `/login`)     |
+| 6    | Sign-out clears the server-recognized session, not just UI state     |
 
 Step 3+4 together are the property the GitHub integration milestone specifically depends on (see [integrations/GITHUB.md § 3](integrations/GITHUB.md)) — a callback from an external provider is a top-level browser navigation carrying cookies, not a `fetch` carrying an `Authorization` header, so this had to work via cookies or that milestone couldn't proceed at all.
 
 ## Troubleshooting
 
-- **Redirect loop or 500 on `/`:** check `.env.local` has `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` set to the *local* values from `bunx supabase status`, not hosted ones (see [ARCHITECTURE.md § Environments and sync model](ARCHITECTURE.md#environments-and-sync-model)).
+- **Redirect loop or 500 on `/`:** check `.env.local` has `SUPABASE_URL`/`SUPABASE_PUBLISHABLE_KEY` set to the _local_ values from `bunx supabase status`, not hosted ones (see [ARCHITECTURE.md § Environments and sync model](ARCHITECTURE.md#environments-and-sync-model)).
 - **Sign-up silently does nothing / no error shown:** open the browser console — a thrown error in the server function surfaces there; also check the `bun run dev` terminal output for a stack trace.
 - **Want to re-run from scratch without wiping the whole DB:** just delete the user via Studio (Authentication → Users → delete), or sign up with a new email — signup does not enforce anything beyond Supabase's own email-uniqueness rule.

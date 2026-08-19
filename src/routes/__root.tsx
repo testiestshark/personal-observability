@@ -19,7 +19,6 @@ import { getCurrentUser } from "../lib/auth/auth.functions";
 // Routes reachable without a session. Everything else redirects to /login.
 const PUBLIC_PATHS = new Set(["/login"]);
 
-
 function NotFoundComponent() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -128,7 +127,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "apple-touch-icon", href: "/apple-touch-icon.png", sizes: "180x180" },
       { rel: "manifest", href: "/manifest.webmanifest" },
     ],
-
   }),
 
   shellComponent: RootShell,

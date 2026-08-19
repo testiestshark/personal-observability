@@ -31,10 +31,7 @@ function Today() {
       />
 
       <div className="grid gap-4">
-        <Placeholder
-          label="Daily state"
-          note="Mood, energy, focus, stress and meaning check-in."
-        />
+        <Placeholder label="Daily state" note="Mood, energy, focus, stress and meaning check-in." />
         <Placeholder label="Movement" note="Steps, Strava activity and weight." />
         <Placeholder label="Making" note="Commits across both GitHub accounts." />
         <Placeholder label="Attention" note="Computer activity and iPhone Screen Time." />

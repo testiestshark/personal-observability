@@ -2,7 +2,6 @@ import { createStart, createCsrfMiddleware, createMiddleware } from "@tanstack/r
 
 import { renderErrorPage } from "./lib/error-page";
 
-
 const errorMiddleware = createMiddleware().server(async ({ next }) => {
   try {
     return await next();
@@ -35,6 +34,5 @@ const csrfMiddleware = createCsrfMiddleware({
 // Auth is cookie-based (see src/lib/auth/), so no bearer token needs attaching:
 // same-origin cookies are sent with serverFn requests automatically.
 export const startInstance = createStart(() => ({
-  
   requestMiddleware: [errorMiddleware, csrfMiddleware],
 }));
