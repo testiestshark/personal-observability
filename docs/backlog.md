@@ -61,20 +61,6 @@ across at least four commits (`90c882d`, `611cdc6`, `d2b5f4e`, `bf7ed9e`), all t
 "Changes". Either gitignore it, or find which tool removes the block and stop it —
 right now it produces meaningless diffs and will produce spurious CI churn.
 
-### Land or retire the GitHub integration spec
-
-[ROADMAP.md](ROADMAP.md) links `docs/integrations/GITHUB.md`, **which does not exist on
-`main`.** The 266-line spec lives only on the unmerged `feature/github-integration`
-branch. Either merge that branch (it is docs-only, so it is safe) or drop the link.
-Right now the roadmap points at nothing.
-
-### Prune merged branches
-
-`feature/github-integration` is the last one left. It exists **only locally** — it was
-never pushed, and it is not merged, so `git branch -d` refuses it and `git branch -D`
-would destroy the only copy of the 266-line spec described in the item above. Resolve
-that item first; deleting the branch is the last step of it, not a separate chore.
-
 ---
 
 ## Low
@@ -106,6 +92,11 @@ silence the rule for that directory — but not worth doing on its own.
 
 Recorded so they are not raised again as gaps.
 
+- **Weigh-in CSV import, in any form.** Dropped on 2026-08-19. The import existed to
+  load historic entries once; that is done, this is a single-user app, and weigh-ins now
+  come from the PWA daily. `src/lib/weight/csv.ts`, its test and
+  `scripts/import-weights.ts` were deleted rather than left as ~856 lines with no
+  callers. Recoverable from git history if a bulk import is ever needed again.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
   and component tests cannot — but it needs Docker in CI, runs in minutes rather than
