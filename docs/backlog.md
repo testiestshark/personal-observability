@@ -77,11 +77,7 @@ Recorded so they are not raised again as gaps.
   `scripts/import-weights.ts` were deleted rather than left as ~856 lines with no
   callers. Recoverable from git history if a bulk import is ever needed again.
 - **Pagination or "load more" for the weigh-in History list.** Settled on 2026-08-19.
-  `HISTORY_LIMIT` in [`weight.functions.ts`](../src/lib/weight/weight.functions.ts) was
-  raised from 2,000 to 10,000 rows — about 27 years of daily weigh-ins — which puts it
-  beyond any history this app will accumulate. The cap bounds the server-rendered
-  payload; it is not a page size, and no pagination is planned. Not worth raising again.
-
+  `HISTORY_LIMIT` is 10,000 rows — about 27 years of daily weigh-ins. Closed, not a gap.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
   and component tests cannot — but it needs Docker in CI, runs in minutes rather than
