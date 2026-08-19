@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { signIn, signUp } from "@/lib/auth/auth.functions";
+import { SIGNUP_ENABLED } from "@/lib/auth/signup-policy";
 
 export const Route = createFileRoute("/login")({
   head: () => ({
@@ -132,20 +133,28 @@ function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-sm text-muted-foreground">
-          {mode === "signin" ? "No account yet?" : "Already have an account?"}{" "}
-          <button
-            type="button"
-            className="text-foreground underline underline-offset-4 hover:no-underline"
-            onClick={() => {
-              setMode(mode === "signin" ? "signup" : "signin");
-              setError(null);
-              setNotice(null);
-            }}
-          >
-            {mode === "signin" ? "Create one" : "Sign in"}
-          </button>
-        </p>
+        {/*
+          Signup is closed, not removed — see lib/auth/signup-policy.ts. With the flag
+          off there is no way to reach "signup" mode, so the branches above render only
+          their sign-in side; they stay because VITE_ALLOW_SIGNUP=true restores the
+          whole flow. Don't simplify them away as unreachable.
+        */}
+        {SIGNUP_ENABLED ? (
+          <p className="mt-6 text-sm text-muted-foreground">
+            {mode === "signin" ? "No account yet?" : "Already have an account?"}{" "}
+            <button
+              type="button"
+              className="text-foreground underline underline-offset-4 hover:no-underline"
+              onClick={() => {
+                setMode(mode === "signin" ? "signup" : "signin");
+                setError(null);
+                setNotice(null);
+              }}
+            >
+              {mode === "signin" ? "Create one" : "Sign in"}
+            </button>
+          </p>
+        ) : null}
       </div>
     </div>
   );

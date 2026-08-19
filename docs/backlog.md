@@ -23,16 +23,25 @@ Last reviewed: 2026-08-15.
 
 ## High
 
-### Close public signup on the hosted project
+### Turn off public signup in the Supabase dashboard
 
-Anyone can currently create an account on the deployed app. This is a single-user
-product, so signup should be off now the owner account exists.
+The app-side half is done: signup is gated behind `VITE_ALLOW_SIGNUP` (see
+[`signup-policy.ts`](../src/lib/auth/signup-policy.ts)), which defaults to off, hides
+the create-account UI and makes the `signUp` server function refuse.
 
-Must be done in the Supabase dashboard (Authentication → Sign In / Providers), **not**
-via `supabase config push` — see
+**The remaining half is the authoritative one and can only be done by hand:** Supabase
+dashboard → Authentication → Sign In / Providers → _Allow new users to sign up_, off.
+Until that is flipped, someone can still register by calling the Supabase auth API
+directly, never touching this app's code.
+
+Do it in the dashboard, **not** via `supabase config push` — see
 [ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication) for why that command
 would reset `site_url` and break hosted redirect links. Local Supabase intentionally
-keeps signup enabled so test accounts can still be created.
+keeps signup enabled so test accounts can still be created; set `VITE_ALLOW_SIGNUP=true`
+in `.env.local` to match.
+
+**Disable, never delete.** The owner may want a second account later, so `signUp`, the
+login page's create-account mode and this flag all stay. They are gated, not dead code.
 
 ### Point the weight import script at the shared CSV parser
 
