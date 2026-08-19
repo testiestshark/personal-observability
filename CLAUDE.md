@@ -42,7 +42,7 @@ bun run test:watch    # vitest in watch mode
 bun run test:coverage # coverage report
 bun run format    # prettier --write
 bun run format:check  # prettier --check (what CI runs)
-bun run verify    # lint + typecheck + test + build — the full CI gate, locally
+bun run verify    # lint + build + typecheck + test — the full CI gate, locally
 bunx supabase start / status / stop   # local Supabase stack (requires Docker running)
 ```
 
@@ -84,6 +84,9 @@ No application-level roles (admin/editor/viewer) — ownership via `user_id = au
 - This repo is synced with [Lovable](https://lovable.dev) — see `AGENTS.md`. Avoid rewriting published git history (force-push, rebase/amend/squash on pushed commits).
 - Database schema changes go through Supabase migrations in `supabase/migrations/` — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the migration policy. Don't hand-edit the hosted schema outside of migrations.
 - Don't add unnecessary dependencies or scaffold empty feature folders — keep the tree matching what's actually in use.
+- `src/routeTree.gen.ts` is generated and **gitignored**. Never edit or commit it. It
+  is why `bun run verify` and CI run the build _before_ typecheck — `tsc` fails on
+  every route without it. See the comment in `.gitignore` before reordering either.
 
 ## Operating rules (must follow)
 

@@ -5,6 +5,11 @@
 # is the point — it catches anything that only works because of the state of a
 # particular developer machine.
 #
+# Build runs BEFORE typecheck, which is not the obvious order. src/routeTree.gen.ts
+# is generated rather than committed (see .gitignore for why), and `tsc` fails on
+# every route without it — the build is what writes it. Keep build ahead of
+# typecheck and test if these steps are ever reordered.
+#
 # Nothing here touches Supabase. Every test is a pure unit or jsdom component
 # test, so no database, secrets or service containers are needed. If an
 # end-to-end suite is added later it belongs in a separate workflow, so a flaky
@@ -23,7 +28,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, typecheck, test, build
+    name: Lint, build, typecheck, test
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -46,14 +51,15 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
+      # First of the three, because it generates src/routeTree.gen.ts, which the
+      # other two need. Also guards the build-only failure mode described in
+      # docs/AUTHENTICATION.md, where a change passes in dev and breaks the
+      # production bundle.
+      - name: Build
+        run: bun run build
+
       - name: Typecheck
         run: bun run typecheck
 
       - name: Test
         run: bun run test
-
-      # Last, because it is the slowest and the least likely to fail alone.
-      # Guards the build-only failure mode described in docs/AUTHENTICATION.md,
-      # where a change passes in dev and breaks the production bundle.
-      - name: Build
-        run: bun run build
