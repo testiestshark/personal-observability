@@ -4,6 +4,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+import { SIGNUP_CLOSED_MESSAGE, SIGNUP_ENABLED } from "./signup-policy";
+
 export type AuthUser = {
   id: string;
   email: string | null;
@@ -48,6 +50,12 @@ export const signIn = createServerFn({ method: "POST" })
 export const signUp = createServerFn({ method: "POST" })
   .validator((data: Credentials) => credentialsSchema.parse(data))
   .handler(async ({ data }): Promise<{ error: string | null; needsEmailConfirmation: boolean }> => {
+    // Refuse before touching Supabase. Hiding the UI alone would not close signup:
+    // this handler is a POST endpoint that anyone can call directly.
+    if (!SIGNUP_ENABLED) {
+      return { error: SIGNUP_CLOSED_MESSAGE, needsEmailConfirmation: false };
+    }
+
     const { createSupabaseRequestClient } = await import("./supabase-request.server");
     const supabase = createSupabaseRequestClient();
 

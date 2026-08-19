@@ -23,16 +23,7 @@ Last reviewed: 2026-08-19.
 
 ## High
 
-### Close public signup on the hosted project
-
-Anyone can currently create an account on the deployed app. This is a single-user
-product, so signup should be off now the owner account exists.
-
-Must be done in the Supabase dashboard (Authentication → Sign In / Providers), **not**
-via `supabase config push` — see
-[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication) for why that command
-would reset `site_url` and break hosted redirect links. Local Supabase intentionally
-keeps signup enabled so test accounts can still be created.
+_Nothing outstanding._
 
 ---
 
@@ -91,6 +82,17 @@ silence the rule for that directory — but not worth doing on its own.
 ## Deliberate non-goals
 
 Recorded so they are not raised again as gaps.
+
+- **Removing the signup code now that signup is closed.** Decided on 2026-08-19.
+  Public signup is off in two places — `VITE_ALLOW_SIGNUP` defaults to closed (see
+  [`signup-policy.ts`](../src/lib/auth/signup-policy.ts)) and _Allow new users to sign
+  up_ is off in the Supabase dashboard, which is the authoritative block. The `signUp`
+  server function, the login page's create-account mode and the flag itself are
+  deliberately **kept**: the owner may want a second account later, and re-opening
+  should be a flag flip plus a dashboard toggle, not a rewrite. They are gated, not
+  dead code — do not strip them as unreachable.
+  Local Supabase keeps signup enabled; set `VITE_ALLOW_SIGNUP=true` in `.env.local`
+  to create test accounts.
 
 - **Weigh-in CSV import, in any form.** Dropped on 2026-08-19. The import existed to
   load historic entries once; that is done, this is a single-user app, and weigh-ins now
