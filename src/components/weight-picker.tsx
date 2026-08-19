@@ -74,11 +74,16 @@ function ScrollColumn({
     };
   }, []);
 
+  // Arrow keys. The index is clamped, so a press at either end of the column
+  // resolves to the value that is already set — hence the `next !== value` guard,
+  // matching handleScroll: onChange means "the user changed this", and a key press
+  // that moved nothing is not a change. Without it, holding an arrow key at the top
+  // of the wheel repeats the announcement indefinitely.
   const step = (delta: number) => {
     if (disabled) return;
     const index = values.indexOf(value);
     const next = values[Math.max(0, Math.min(values.length - 1, index + delta))];
-    if (next !== undefined) onChange(next);
+    if (next !== undefined && next !== value) onChange(next);
   };
 
   return (
