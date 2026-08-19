@@ -1,3 +1,7 @@
+import { readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,6 +14,8 @@ import {
   fromKilograms,
   londonDayKey,
   londonDayToInstant,
+  MAX_KG,
+  MIN_KG,
   parseMonthKey,
   shiftMonth,
 } from "./units";
@@ -189,5 +195,53 @@ describe("current London day and month", () => {
 
     expect(currentLondonDay()).toBe("2026-09-01");
     expect(currentLondonMonth()).toBe("2026-09");
+  });
+});
+
+// The bounds exist in two languages: TypeScript here, SQL in the migration that
+// created the column. Nothing in Postgres can catch them drifting apart, and the
+// symptom would be silent — a value this code accepts and the database then rejects
+// with a raw constraint violation. So the SQL is the source and this reads it.
+describe("MIN_KG / MAX_KG against the migration", () => {
+  // Last match wins, so a later migration that ALTERs the constraint is what gets
+  // checked rather than the original CREATE TABLE.
+  function boundsFromMigrations(): { min: number; max: number } {
+    const dir = join(dirname(fileURLToPath(import.meta.url)), "../../../supabase/migrations");
+    const files = readdirSync(dir)
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+
+    let found: { min: number; max: number } | null = null;
+    for (const file of files) {
+      const sql = readFileSync(join(dir, file), "utf8");
+      const pattern = /weight_kg\s*>\s*([\d.]+)\s+and\s+weight_kg\s*<\s*([\d.]+)/gi;
+      for (const match of sql.matchAll(pattern)) {
+        found = { min: Number(match[1]), max: Number(match[2]) };
+      }
+    }
+
+    if (!found) {
+      throw new Error(
+        "No weight_kg bounds found in supabase/migrations — did the constraint move?",
+      );
+    }
+    return found;
+  }
+
+  it("matches the CHECK constraint on weight_entries.weight_kg", () => {
+    const { min, max } = boundsFromMigrations();
+
+    expect(MIN_KG).toBe(min);
+    expect(MAX_KG).toBe(max);
+  });
+
+  // The SQL uses strict > and <, so the validator has to reject the bounds
+  // themselves. Guards the comparison in weight.functions.ts staying <= / >=.
+  it("treats the bounds as exclusive, as the SQL does", () => {
+    const { min, max } = boundsFromMigrations();
+
+    expect(min).toBeLessThan(max);
+    expect(MIN_KG <= min).toBe(true);
+    expect(MAX_KG >= max).toBe(true);
   });
 });

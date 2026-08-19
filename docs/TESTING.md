@@ -6,7 +6,7 @@
 bun run test           # run everything once (what CI runs)
 bun run test:watch     # re-run on change while developing
 bun run test:coverage  # coverage report, text + HTML in coverage/
-bun run verify         # lint, typecheck, test, build — the full CI gate locally
+bun run verify         # lint, build, typecheck, test — the full CI gate locally
 ```
 
 Run `bun run verify` before pushing. It is the same sequence as

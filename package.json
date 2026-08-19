@@ -15,7 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "verify": "bun run lint && bun run typecheck && bun run test && bun run build"
+    "verify": "bun run lint && bun run build && bun run typecheck && bun run test"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

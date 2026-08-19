@@ -35,23 +35,6 @@ There is a calendar and a history table, but nothing that shows direction. A spa
 or chart on Today or Insights is the smallest useful version. This is also the first
 piece of the app that would justify a shared chart component.
 
-### De-duplicate the weight range constants
-
-`MIN_KG` / `MAX_KG` are declared twice: exported from
-[`units.ts`](../src/lib/weight/units.ts) and re-declared locally in
-[`weight.functions.ts`](../src/lib/weight/weight.functions.ts). Both mirror the same
-`CHECK` constraint, so they can silently disagree if one is ever changed. Since the CSV
-parser was deleted the `units.ts` pair has no consumer left at all — keep `units.ts` as
-the single home and import from it in `weight.functions.ts`.
-
-### Decide what to do about `routeTree.gen.ts` churn
-
-The file is generated, committed, and unstable: `bun run build` appends a
-`declare module` block that something else then removes. History shows it flip-flopping
-across at least four commits (`90c882d`, `611cdc6`, `d2b5f4e`, `bf7ed9e`), all titled
-"Changes". Either gitignore it, or find which tool removes the block and stop it —
-right now it produces meaningless diffs and will produce spurious CI churn.
-
 ---
 
 ## Low
