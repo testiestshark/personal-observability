@@ -23,26 +23,6 @@ Last reviewed: 2026-08-15.
 
 ## High
 
-### Turn off public signup in the Supabase dashboard
-
-The app-side half is done: signup is gated behind `VITE_ALLOW_SIGNUP` (see
-[`signup-policy.ts`](../src/lib/auth/signup-policy.ts)), which defaults to off, hides
-the create-account UI and makes the `signUp` server function refuse.
-
-**The remaining half is the authoritative one and can only be done by hand:** Supabase
-dashboard → Authentication → Sign In / Providers → _Allow new users to sign up_, off.
-Until that is flipped, someone can still register by calling the Supabase auth API
-directly, never touching this app's code.
-
-Do it in the dashboard, **not** via `supabase config push` — see
-[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication) for why that command
-would reset `site_url` and break hosted redirect links. Local Supabase intentionally
-keeps signup enabled so test accounts can still be created; set `VITE_ALLOW_SIGNUP=true`
-in `.env.local` to match.
-
-**Disable, never delete.** The owner may want a second account later, so `signUp`, the
-login page's create-account mode and this flag all stay. They are gated, not dead code.
-
 ### Point the weight import script at the shared CSV parser
 
 [`src/lib/weight/csv.ts`](../src/lib/weight/csv.ts) was extracted in c6ea05f as the
@@ -119,6 +99,17 @@ silence the rule for that directory — but not worth doing on its own.
 ## Deliberate non-goals
 
 Recorded so they are not raised again as gaps.
+
+- **Removing the signup code now that signup is closed.** Decided on 2026-08-19.
+  Public signup is off in two places — `VITE_ALLOW_SIGNUP` defaults to closed (see
+  [`signup-policy.ts`](../src/lib/auth/signup-policy.ts)) and _Allow new users to sign
+  up_ is off in the Supabase dashboard, which is the authoritative block. The `signUp`
+  server function, the login page's create-account mode and the flag itself are
+  deliberately **kept**: the owner may want a second account later, and re-opening
+  should be a flag flip plus a dashboard toggle, not a rewrite. They are gated, not
+  dead code — do not strip them as unreachable.
+  Local Supabase keeps signup enabled; set `VITE_ALLOW_SIGNUP=true` in `.env.local`
+  to create test accounts.
 
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
