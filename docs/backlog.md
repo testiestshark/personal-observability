@@ -54,12 +54,6 @@ identical state) but inconsistent. Behaviour is pinned by tests in
 invisible in the History list — the calendar still shows them. Fine for years of daily
 weigh-ins; worth revisiting only if the list ever gets near it.
 
-### `react-refresh/only-export-components` warnings
-
-Six warnings, all in vendored shadcn files under `src/components/ui/`. They do not fail
-the build or CI. Either fix upstream-style by splitting the constant exports out, or
-silence the rule for that directory — but not worth doing on its own.
-
 ---
 
 ## Deliberate non-goals
@@ -82,6 +76,11 @@ Recorded so they are not raised again as gaps.
   come from the PWA daily. `src/lib/weight/csv.ts`, its test and
   `scripts/import-weights.ts` were deleted rather than left as ~856 lines with no
   callers. Recoverable from git history if a bulk import is ever needed again.
+- **Splitting the non-component exports out of `src/components/ui/`.** Decided on
+  2026-08-19. That directory is vendored shadcn code; its CLI would undo the split on
+  the next regeneration. `react-refresh/only-export-components` is switched off for
+  that path in `eslint.config.js` instead, and remains on everywhere else.
+
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
   and component tests cannot — but it needs Docker in CI, runs in minutes rather than
