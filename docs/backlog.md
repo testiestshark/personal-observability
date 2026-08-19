@@ -3,7 +3,7 @@
 **This is the list of what needs doing.** When there is no specific instruction about
 what to work on, the next item here is the answer.
 
-Last reviewed: 2026-08-15.
+Last reviewed: 2026-08-19.
 
 ## How this file works
 
@@ -34,29 +34,9 @@ via `supabase config push` — see
 would reset `site_url` and break hosted redirect links. Local Supabase intentionally
 keeps signup enabled so test accounts can still be created.
 
-### Point the weight import script at the shared CSV parser
-
-[`src/lib/weight/csv.ts`](../src/lib/weight/csv.ts) was extracted in c6ea05f as the
-shared parser, but [`scripts/import-weights.ts`](../scripts/import-weights.ts) still
-carries its own copy of `splitCsvLine`, `DATE_PATTERN`, `parseDayCell`,
-`parseWeightCell` and `oneRowPerDay`. Two parsers, free to drift — and the tests in
-`csv.test.ts` only cover one of them. Delete the duplicates from the script and import
-from the module.
-
 ---
 
 ## Medium
-
-### Build the CSV import UI
-
-`csv.ts` currently has **no callers at all**. It was written to be called from the
-browser — pure, no I/O, and it already returns everything a preview needs
-(`skipped`, `duplicates`, `roundedCount`, and the `provesDayFirst` flag that exists
-specifically to warn when a file is ambiguous between dd/mm and mm/dd). What is missing
-is the dialog: pick a file, show the summary, confirm, submit.
-
-Finishing this retires `scripts/import-weights.ts` as a thing that has to be run by
-hand, and makes the item above moot.
 
 ### Show weight as a trend, not just a list
 
@@ -67,10 +47,11 @@ piece of the app that would justify a shared chart component.
 ### De-duplicate the weight range constants
 
 `MIN_KG` / `MAX_KG` are declared twice: exported from
-[`units.ts`](../src/lib/weight/units.ts) (where `csv.ts` imports them) and re-declared
-locally in [`weight.functions.ts`](../src/lib/weight/weight.functions.ts). Both mirror
-the same `CHECK` constraint, so the server validator and the CSV validator can silently
-disagree if one is ever changed. Import from `units.ts` in both places.
+[`units.ts`](../src/lib/weight/units.ts) and re-declared locally in
+[`weight.functions.ts`](../src/lib/weight/weight.functions.ts). Both mirror the same
+`CHECK` constraint, so they can silently disagree if one is ever changed. Since the CSV
+parser was deleted the `units.ts` pair has no consumer left at all — keep `units.ts` as
+the single home and import from it in `weight.functions.ts`.
 
 ### Decide what to do about `routeTree.gen.ts` churn
 
@@ -111,6 +92,11 @@ silence the rule for that directory — but not worth doing on its own.
 
 Recorded so they are not raised again as gaps.
 
+- **Weigh-in CSV import, in any form.** Dropped on 2026-08-19. The import existed to
+  load historic entries once; that is done, this is a single-user app, and weigh-ins now
+  come from the PWA daily. `src/lib/weight/csv.ts`, its test and
+  `scripts/import-weights.ts` were deleted rather than left as ~856 lines with no
+  callers. Recoverable from git history if a bulk import is ever needed again.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
   against a local Supabase stack would catch auth, routing and RLS regressions that unit
   and component tests cannot — but it needs Docker in CI, runs in minutes rather than
