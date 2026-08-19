@@ -29,11 +29,7 @@ _Nothing outstanding._
 
 ## Medium
 
-### Show weight as a trend, not just a list
-
-There is a calendar and a history table, but nothing that shows direction. A sparkline
-or chart on Today or Insights is the smallest useful version. This is also the first
-piece of the app that would justify a shared chart component.
+_Nothing outstanding._
 
 ---
 
