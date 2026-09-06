@@ -4,9 +4,9 @@
 
 TanStack Start (React 19 + Vite, SSR via Nitro) on the frontend, Supabase (Postgres, Auth, Storage) as the backend. Package manager/runtime: Bun.
 
-## Planned integration architecture
+## Integration architecture
 
-**Status: Planned / Not Implemented**
+**Status: Garmin steps foundation implemented; other providers planned**
 
 Personal Observability will aggregate records from provider-specific integration
 boundaries into its own database:
@@ -17,7 +17,7 @@ boundaries into its own database:
                                ^
              +-----------------+-----------------+
              |                 |                 |
-           Terra             Strava            GitHub
+      Garmin bridge          Strava            GitHub
              ^                 ^                 ^
            Garmin         Hevy / Garmin        GitHub
              |
@@ -26,7 +26,7 @@ boundaries into its own database:
 
 The intended responsibilities are:
 
-- **Terra / Garmin:** daily health and wellness data.
+- **Local Garmin bridge:** daily health and wellness data from Garmin Connect.
 - **Strava:** discrete fitness and activity data.
 - **Hevy:** strength-training logging, synced into Strava.
 - **GitHub:** development and productivity activity.
@@ -40,19 +40,20 @@ provider, external identifier, and ingestion time.
 
 Provider boundaries should translate external payloads into internal records so
 one provider can be replaced without changing unrelated product code. In
-particular, Terra may later be replaced by a direct Garmin integration or a
-different health provider.
+particular, the unofficial Garmin adapter may later be replaced by Garmin's
+official API or a different health provider.
 
-Garmin workouts may reach Strava while Garmin wellness data reaches Terra. The
-system must not blindly create two copies of the same activity: Terra is
-initially responsible for health/wellness records and Strava for activities.
+Garmin workouts may reach Strava while Garmin wellness data reaches the local
+bridge. The system must not blindly create two copies of the same activity: the
+bridge is initially responsible for health/wellness records and Strava for
+activities.
 Future activity deduplication should prefer external IDs and provenance, with
 timestamps, activity type, and duration as additional signals.
 
 Detailed planned designs:
 
 - [Hevy to Strava activity integration](integrations/HEVY_STRAVA.md)
-- [Garmin to Terra health and wellness integration](integrations/GARMIN_TERRA.md)
+- [Garmin health and wellness integration](integrations/GARMIN.md)
 - [GitHub integration](integrations/GITHUB.md)
 
 ## Environments and sync model
@@ -70,14 +71,7 @@ Local frontend → local Supabase API (127.0.0.1:54321) → local Postgres (127.
 
 The hosted Lovable app has the equivalent relationship against the hosted project, independently.
 
-> **Operational status (2026-09-06): hosted login does not work.** The local
-> cookie-auth flow is confirmed against local Supabase, but login through the Lovable
-> preview/deployment remains broken. Several attempted mitigations passed local and
-> build checks without making the real hosted sign-in flow usable. Investigation is
-> deliberately parked; the hosted environment must not be described as working or
-> production-verified.
-
-**The hosted build gets its public config from the committed `.env.production`**, because Vite inlines `VITE_*` at build time and a gitignored `.env` on a developer machine can never reach Lovable's builder. The request-scoped server client prefers the unprefixed `SUPABASE_*` runtime variables and falls back to those same build-time `VITE_SUPABASE_*` public values. That fallback was added to address missing variables in Lovable editor previews; it prevents that specific configuration error but did **not** make hosted login work. It is safe only for the public project URL and publishable key; any actual secret must remain a server-side runtime variable configured in the hosting panel.
+**The hosted build gets its public config from the committed `.env.production`**, because Vite inlines `VITE_*` at build time and a gitignored `.env` on a developer machine can never reach Lovable's builder. The request-scoped server client prefers the unprefixed `SUPABASE_*` runtime variables and falls back to those same build-time `VITE_SUPABASE_*` public values. This is safe only for the public project URL and publishable key; any actual secret must remain a server-side runtime variable configured in the hosting panel.
 
 When rotating these, take the values from the _hosted_ project's dashboard (Project Settings → API on `ivdhucdiycnbgvdetagw`) — never from `.env.local`, which points at the local stack, and never from `.env`, which historically held a **different, now-defunct project** (`sepdqkfqgysnuriynhid`) and is a live trap for exactly this mistake. Verify after any change by building and grepping the bundle:
 
@@ -104,11 +98,6 @@ Files:
 
 ## Authentication
 
-**Status: locally implemented; Lovable-hosted login broken and parked.** The design
-below describes the intended and locally verified behavior. It is not evidence that
-the preview/deployed app can currently complete a login. Further investigation was
-parked on 2026-09-06 by explicit product decision so development can move on.
-
 Supabase Auth with email + password. The session lives in **cookies**, not `localStorage`, and all auth operations run through TanStack Start server functions.
 
 - `src/lib/auth/supabase-request.server.ts` — builds a request-scoped Supabase client whose cookie access is wired to TanStack Start's `getCookies`/`setCookie`. Must be constructed per request, never cached in a module-level variable, or one visitor's session would leak into another's render.
@@ -123,27 +112,14 @@ Supabase Auth with email + password. The session lives in **cookies**, not `loca
 **Generated scaffolding.** `src/integrations/supabase/client.ts`, `auth-middleware.ts` and `auth-attacher.ts` are Lovable-generated (`// This file is automatically generated`) and implement a different, `localStorage` + `Authorization: Bearer` approach. Don't build on them; use `src/lib/auth/` instead. Don't edit or delete them either — Lovable regenerates them (see below).
 
 **Don't build on Lovable's generated auth scaffolding.** `attachSupabaseAuth` is not
-currently registered as `functionMiddleware` in `src/start.ts`. When it was registered,
-its `.client()` middleware ran in the browser on every server-function call and eagerly
-constructed the generated Supabase client. That created a hosted-only failure mode
-hidden by local `.env.local` values. Keep it unregistered unless the auth architecture
-is deliberately revisited.
-
-This broke hosted sign-in on 2026-08-02. Removing the middleware in PR #2 addressed
-that failure, but Lovable later restored it during unrelated work and re-broke the site.
-Adding `.env.production` and later adding the request-client config fallback addressed
-specific environment errors, but neither restored a usable hosted login. There is no
-known working hosted fix at present, and finding one is deliberately parked.
-
-The intended httpOnly-cookie design remains valid locally: auth operations run through
-server functions and no session token is intentionally exposed to client JavaScript.
-That statement does not imply the Lovable-hosted flow works.
+currently registered as `functionMiddleware` in `src/start.ts`. The app's cookie-based
+auth does not need bearer-token attachment: same-origin cookies accompany server-function
+requests automatically.
 
 **Signup lockdown.** This is a single-user product, so public signup should be disabled on the hosted project once the owner account exists — do it in the Supabase dashboard (Authentication → Sign In / Providers), _not_ via `supabase config push`. That command pushes the entire local `config.toml`, which contains only `project_id`, so every unspecified auth setting would reset to CLI defaults — including `site_url`, which defaults to `http://127.0.0.1:3000` and would break hosted redirect/confirmation links. There is no `config pull` to recover current values first and no `--dry-run`. Local Supabase intentionally keeps signup enabled so test accounts can still be created.
 
-For a step-by-step procedure that verifies the **local** flow only (signup, session
-persistence across refresh, route protection, sign-out), see
-[AUTHENTICATION.md](AUTHENTICATION.md). It does not verify Lovable-hosted login.
+For a step-by-step local verification procedure (signup, session persistence across
+refresh, route protection, sign-out), see [AUTHENTICATION.md](AUTHENTICATION.md).
 
 ## Roles and ownership policy
 

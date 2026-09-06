@@ -1,6 +1,11 @@
-# Garmin to Terra health and wellness integration
+# Archived Garmin-to-Terra design
 
-**Status: Planned / Not Implemented**
+**Status: Superseded on 2026-09-06 — do not implement**
+
+Terra was rejected because its entry pricing is disproportionate for this
+single-user app. The active automatic integration is the local Garmin Connect
+bridge in [GARMIN.md](GARMIN.md). The original design remains below only as a
+record of the abandoned approach.
 
 This document describes the intended integration boundary and data flow. It does
 not describe behavior that exists today, and it does not define a final database

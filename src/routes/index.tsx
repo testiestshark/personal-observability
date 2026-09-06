@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
+import { getDailySteps } from "@/lib/health/health.functions";
+import { currentLondonDay } from "@/lib/weight/units";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -18,10 +20,16 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
+  loader: async () => {
+    const day = currentLondonDay();
+    return { steps: await getDailySteps({ data: { day } }) };
+  },
   component: Today,
 });
 
 function Today() {
+  const { steps } = Route.useLoaderData();
+
   return (
     <>
       <PageHeader
@@ -39,7 +47,10 @@ function Today() {
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">Snapshot</h2>
           <div className="mt-2">
-            <PlaceholderRow label="Steps" value="—" />
+            <PlaceholderRow
+              label="Steps"
+              value={steps ? steps.steps.toLocaleString("en-GB") : "—"}
+            />
             <PlaceholderRow label="Weight" value="—" />
             <PlaceholderRow label="Commits" value="—" />
             <PlaceholderRow label="Screen time" value="—" />

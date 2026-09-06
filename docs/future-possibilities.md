@@ -1,7 +1,7 @@
 # Future Possibilities
 
 Speculative, not scheduled. This is a holding pen for ideas that only become
-possible *because* the data domains in [PRODUCT.md](PRODUCT.md) end up
+possible _because_ the data domains in [PRODUCT.md](PRODUCT.md) end up
 collected in one place — not committed work, and not sequenced. When an idea
 here is ready to become real work, it graduates to [ROADMAP.md](ROADMAP.md) /
 [backlog.md](backlog.md) and gets removed from this list.
@@ -22,6 +22,7 @@ it and surfaces it for review before publishing) is a possible later step,
 not a requirement to get value from the idea.
 
 Open questions for whenever this gets picked up:
+
 - Which domains actually produce something worth surfacing publicly (GitHub
   activity is the obvious one; mood/journal entries probably aren't)
 - Manual review/edit step before anything goes out, vs. fully trusting the

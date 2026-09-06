@@ -1,0 +1,7 @@
+services:
+  garmin-sync:
+    environment:
+      PERSONAL_OBSERVABILITY_ENVIRONMENT: live
+      SUPABASE_URL: ${VITE_SUPABASE_URL}
+      SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY}
+      SUPABASE_SESSION_FILE: /data/supabase-session-live.json

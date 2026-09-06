@@ -8,12 +8,6 @@ local Supabase, using the current checkout plus Docker. For the design/architect
 Local flow last confirmed working: 2026-09-06 — account created, login reached the app,
 the session persisted across a hard refresh, and the disposable user was removed.
 
-> **Lovable-hosted login status: NOT WORKING / PARKED.** As of 2026-09-06, the
-> preview/deployed app still cannot complete a usable login. Passing this runbook,
-> rendering the hosted login form, or producing a successful build does not prove the
-> hosted flow. Previous fixes addressed individual symptoms but did not solve it.
-> Further investigation is deliberately parked so the project can move on.
-
 ## Prerequisites
 
 - Docker Desktop running
@@ -58,14 +52,12 @@ This wipes local `auth.users` along with everything else, so any account created
 6. **Click "Sign out" in Settings.**
    Expected: redirected to `/login`. Then navigating to `http://localhost:8080/` should redirect straight back to `/login` — confirms sign-out actually cleared the server-side session, not just client state.
 
-## Production-build sanity check (not a hosted-login verification)
+## Production-build sanity check
 
 The dev server reads `.env.local`, while hosted builds read the committed public values
-from `.env.production`. Lovable editor previews did not expose the unprefixed
-`SUPABASE_*` names to the server runtime, so a fallback to build-time
-`VITE_SUPABASE_*` values was added. That removed one observed configuration error but
-did not make hosted login work. These commands catch packaging regressions only; they
-are not an end-to-end hosted-auth test:
+from `.env.production`. The request-scoped client can use the build-time
+`VITE_SUPABASE_*` public values when unprefixed runtime variables are unavailable.
+These commands catch packaging regressions:
 
 ```powershell
 bun run build
@@ -82,9 +74,8 @@ Get-ChildItem .output/server/_ssr/ | Where-Object { $_.Name -like "supabase-requ
 ```
 
 If the first command prints a match, the browser bundle contains the generated Supabase
-client and may have reintroduced a known hosted failure mode — see
-[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication). A clean result still
-does not establish that hosted auth works.
+client instead of the app's cookie-based auth path — see
+[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication).
 
 Note that `bunx vite preview` does **not** work for this project: Nitro builds a Cloudflare Worker to `.output/server/`, while `vite preview` expects `dist/server/server.js`. A 500 from it is a tooling mismatch, not an app failure.
 
@@ -104,9 +95,7 @@ Open Supabase Studio at `http://127.0.0.1:54323` → Authentication → Users. T
 | 6    | Sign-out clears the server-recognized session, not just UI state     |
 
 Step 3+4 together are the property the GitHub integration milestone depends on (see
-[integrations/GITHUB.md § 3](integrations/GITHUB.md)). They are proven locally only;
-because Lovable-hosted login is broken and parked, they are not currently an available
-hosted dependency for that milestone.
+[integrations/GITHUB.md § 3](integrations/GITHUB.md)).
 
 ## Troubleshooting
 

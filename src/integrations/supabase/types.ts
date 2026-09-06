@@ -8,6 +8,42 @@ export type Database = {
   };
   public: {
     Tables: {
+      daily_health_metrics: {
+        Row: {
+          created_at: string;
+          day: string;
+          external_id: string | null;
+          id: string;
+          provider: string;
+          source: string;
+          steps: number | null;
+          synced_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          day: string;
+          external_id?: string | null;
+          id?: string;
+          provider: string;
+          source: string;
+          steps?: number | null;
+          synced_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          day?: string;
+          external_id?: string | null;
+          id?: string;
+          provider?: string;
+          source?: string;
+          steps?: number | null;
+          synced_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       weight_entries: {
         Row: {
           created_at: string;

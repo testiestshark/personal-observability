@@ -1,0 +1,15 @@
+services:
+  garmin-sync:
+    build:
+      context: .
+      dockerfile: scripts/garmin/Dockerfile
+    environment:
+      GARMIN_TOKEN_STORE: /data/garmin
+      SUPABASE_SESSION_FILE: /data/supabase-session.json
+      GARMIN_SYNC_IN_DOCKER: "true"
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+    volumes:
+      - ./.garmin-sync:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

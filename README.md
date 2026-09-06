@@ -114,10 +114,34 @@ bun run format     # prettier --write
 bunx supabase stop # stop the local Supabase stack
 ```
 
+## Automatic Garmin steps
+
+Garmin steps can sync directly from Garmin Connect into the local Supabase
+database without Terra or manual exports. Build the worker, complete the one-time
+interactive login, test a sync, then install the hourly Windows task:
+
+```powershell
+bun run garmin:build
+bun run garmin:setup
+bun run garmin:sync
+powershell -ExecutionPolicy Bypass -File scripts/garmin/install-schedule.ps1
+```
+
+The setup prompts locally for both account passwords and Garmin MFA when needed;
+passwords are never stored. Reusable bearer tokens live under the gitignored
+`.garmin-sync/` directory. The local Supabase stack must be running when a sync
+fires. See [the Garmin integration runbook](docs/integrations/GARMIN.md).
+
 The hosted app (this repo's `main` branch, synced with Lovable) connects to **hosted** Supabase — only local development uses the local stack. See [CLAUDE.md](CLAUDE.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on the local-vs-hosted split and secrets policy.
 
-> **Hosted login status — parked:** Email/password login through the Lovable
-> preview/deployment still does not work as of 2026-09-06. Local Supabase auth
-> works, but that does not prove the hosted flow. Further Lovable-login debugging
-> is deliberately parked so work can continue elsewhere; do not describe hosted
-> authentication as fixed or production-ready.
+For the published app, authenticate only its separate Supabase session and reuse
+the existing Garmin token cache:
+
+```powershell
+bun run garmin:setup:live
+bun run garmin:sync:live
+powershell -ExecutionPolicy Bypass -File scripts/garmin/install-live-schedule.ps1
+```
+
+The hosted database migration must be deployed before the first live sync. See
+[the Garmin integration runbook](docs/integrations/GARMIN.md#live-setup-and-verification).

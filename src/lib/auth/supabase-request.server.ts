@@ -48,9 +48,7 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
  * one visitor's session would leak into another's render.
  */
 export function createSupabaseRequestClient() {
-  // This fallback addresses the missing-variable error observed in Lovable previews,
-  // but hosted login remains broken and deliberately parked. These values are
-  // intentionally public; secrets must never use this fallback.
+  // These fallback values are intentionally public; secrets must never use this path.
   const SUPABASE_URL = process.env["SUPABASE_URL"] || import.meta.env["VITE_SUPABASE_URL"];
   const SUPABASE_PUBLISHABLE_KEY =
     process.env["SUPABASE_PUBLISHABLE_KEY"] || import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];

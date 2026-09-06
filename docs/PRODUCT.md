@@ -6,12 +6,12 @@ Personal Observability is a private, mobile-first web application for one person
 
 A single-user dashboard that brings together data that's normally scattered across separate apps, so patterns across health, work, and mood become visible in one place. It is not a multi-user product, and has no public-facing or social component.
 
-## Data domains (planned)
+## Data domains
 
 - GitHub activity, across two accounts
 - Strava fitness activities
-- Daily steps
-- Weight
+- Daily steps (Garmin sync foundation implemented; local account setup pending)
+- Weight (implemented locally)
 - Computer activity
 - Manually recorded iPhone Screen Time
 - Mood, energy, focus, stress, and meaning
@@ -20,7 +20,9 @@ A single-user dashboard that brings together data that's normally scattered acro
 
 ## Current stage
 
-The current milestone is the application shell only: navigation (Today, Timeline, Insights, Integrations, Journal, Settings), a calm and restrained visual design, and mobile-first layout with mock placeholders. No data domains are wired up yet — see [ROADMAP.md](ROADMAP.md) for what's built vs planned.
+The application shell and local authentication are implemented. Weight is wired
+end-to-end, and the Garmin steps integration is ready for one-time account setup
+and scheduling. See [ROADMAP.md](ROADMAP.md) for the exact status.
 
 ## Explicit non-goals (for now)
 

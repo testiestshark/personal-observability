@@ -15,6 +15,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "garmin:build": "docker compose --env-file .env.local -f docker-compose.garmin.yml build",
+    "garmin:setup": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync setup",
+    "garmin:sync": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync sync",
+    "garmin:status": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync status",
+    "garmin:setup:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync setup-app",
+    "garmin:sync:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync sync",
+    "garmin:status:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync status",
+    "garmin:test": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync test",
     "verify": "bun run lint && bun run build && bun run typecheck && bun run test"
   },
   "dependencies": {

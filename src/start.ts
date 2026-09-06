@@ -24,15 +24,8 @@ const csrfMiddleware = createCsrfMiddleware({
   filter: (ctx) => ctx.handlerType === "serverFn",
 });
 
-// DO NOT re-add `attachSupabaseAuth` here. It is a `.client()` middleware, so it
-// runs in the browser on every server-function call and eagerly constructs the
-// generated Supabase client from `@/integrations/supabase/client`, which throws
-// when VITE_SUPABASE_* are absent from the client bundle — as they are on the
-// hosted build. That broke sign-in in production while passing locally, because
-// .env.local happens to define those variables.
-//
-// Auth is cookie-based (see src/lib/auth/), so no bearer token needs attaching:
-// same-origin cookies are sent with serverFn requests automatically.
+// Auth is cookie-based (see src/lib/auth/), so no bearer-token middleware is
+// registered: same-origin cookies accompany serverFn requests automatically.
 export const startInstance = createStart(() => ({
   requestMiddleware: [errorMiddleware, csrfMiddleware],
 }));

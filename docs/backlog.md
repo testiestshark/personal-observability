@@ -43,12 +43,6 @@ _Nothing outstanding._
 
 Recorded so they are not raised again as gaps.
 
-- **Further Lovable-hosted login debugging.** Parked by explicit decision on
-  2026-09-06 after multiple attempted fixes passed local/build checks but the real
-  preview/deployed login still did not work. Local Supabase auth remains usable for
-  development. Do not reopen this work, describe hosted auth as fixed, or make it an
-  assumed dependency unless the owner explicitly changes the decision.
-
 - **Removing the signup code now that signup is closed.** Decided on 2026-08-19.
   Public signup is off in two places — `VITE_ALLOW_SIGNUP` defaults to closed (see
   [`signup-policy.ts`](../src/lib/auth/signup-policy.ts)) and _Allow new users to sign

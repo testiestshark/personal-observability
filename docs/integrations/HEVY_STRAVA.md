@@ -83,10 +83,10 @@ is scheduled.
 
 ## Duplicate prevention
 
-Strava should be the primary path for **activities**, while Terra should be the
-primary path for Garmin **health and wellness** data. The initial Terra scope
-should therefore not create a second copy of a workout already received through
-Strava.
+Strava should be the primary path for **activities**, while the local Garmin
+bridge should be the primary path for Garmin **health and wellness** data. Its
+initial scope should therefore not create a second copy of a workout already
+received through Strava.
 
 Activity ingestion must be idempotent. Future duplicate detection should first
 use stable provider or external IDs where they are available, and may also need
@@ -98,17 +98,18 @@ to compare:
 - Duration.
 
 Heuristic matching should be a fallback rather than a replacement for stable
-identifiers. If Garmin activity ingestion through Terra is ever added, that
-change requires an explicit cross-provider identity and deduplication design.
+identifiers. If Garmin activity ingestion through the health bridge is ever
+added, that change requires an explicit cross-provider identity and
+deduplication design.
 
 ## Relationship to the wider system
 
 This integration contributes discrete workouts to the shared Personal
 Observability timeline. Daily Garmin health and wellness summaries arrive by a
-separate Terra boundary, while GitHub contributes development activity. The
+separate Garmin-health boundary, while GitHub contributes development activity. The
 database combines those records by time and date while retaining each record's
-origin and ingestion path. See [Architecture](../ARCHITECTURE.md#planned-integration-architecture)
-and [Garmin to Terra](GARMIN_TERRA.md).
+origin and ingestion path. See [Architecture](../ARCHITECTURE.md#integration-architecture)
+and [Garmin health and wellness](GARMIN.md).
 
 ## Open Questions / Implementation Validation
 

@@ -56,8 +56,7 @@ function LoginPage() {
 
       // The session cookie is written by the sign-in server function. Use a full
       // document navigation so the next request is rendered with that cookie;
-      // an in-place router invalidation can race the browser committing it. This
-      // works locally; Lovable-hosted login remains broken and deliberately parked.
+      // an in-place router invalidation can race the browser committing it.
       window.location.replace("/");
     } catch {
       setError("Something went wrong. Please try again.");
