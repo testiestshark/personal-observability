@@ -114,9 +114,9 @@ bun run format     # prettier --write
 bunx supabase stop # stop the local Supabase stack
 ```
 
-## Automatic Garmin steps
+## Automatic Garmin health sync
 
-Garmin steps can sync directly from Garmin Connect into the local Supabase
+Garmin steps and calorie totals can sync directly from Garmin Connect into Supabase
 database without Terra or manual exports. Build the worker, complete the one-time
 interactive login, test a sync, then install the hourly Windows task:
 
@@ -145,3 +145,7 @@ powershell -ExecutionPolicy Bypass -File scripts/garmin/install-live-schedule.ps
 
 The hosted database migration must be deployed before the first live sync. See
 [the Garmin integration runbook](docs/integrations/GARMIN.md#live-setup-and-verification).
+
+To make the live sync independent of this computer, deploy the same worker as a
+private Railway cron service. Repository setup and the secure token-transfer
+procedure are in [the Railway runbook](docs/integrations/RAILWAY.md).

@@ -6,7 +6,7 @@ TanStack Start (React 19 + Vite, SSR via Nitro) on the frontend, Supabase (Postg
 
 ## Integration architecture
 
-**Status: Garmin steps foundation implemented; other providers planned**
+**Status: Garmin daily health implemented; other providers planned**
 
 Personal Observability will aggregate records from provider-specific integration
 boundaries into its own database:
@@ -26,7 +26,8 @@ boundaries into its own database:
 
 The intended responsibilities are:
 
-- **Local Garmin bridge:** daily health and wellness data from Garmin Connect.
+- **Garmin bridge:** daily health and wellness data from Garmin Connect, runnable
+  locally or as an outbound-only Railway cron worker.
 - **Strava:** discrete fitness and activity data.
 - **Hevy:** strength-training logging, synced into Strava.
 - **GitHub:** development and productivity activity.
@@ -54,6 +55,7 @@ Detailed planned designs:
 
 - [Hevy to Strava activity integration](integrations/HEVY_STRAVA.md)
 - [Garmin health and wellness integration](integrations/GARMIN.md)
+- [Railway-hosted Garmin sync](integrations/RAILWAY.md)
 - [GitHub integration](integrations/GITHUB.md)
 
 ## Environments and sync model

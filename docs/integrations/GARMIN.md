@@ -2,7 +2,7 @@
 
 **Status: Implemented and verified locally on 2026-09-06**
 
-Personal Observability reads daily steps automatically from the owner's Garmin
+Personal Observability reads daily health totals automatically from the owner's Garmin
 Connect account and writes normalized records to local Supabase:
 
 ```text
@@ -15,9 +15,11 @@ that ingestion be automatic.
 
 ## Scope
 
-The first slice ingests one daily total: steps. The provider boundary and table
-can later be extended with sleep, resting heart rate, HRV, calories, distance,
-and stress after their Garmin field semantics have been validated. Discrete
+The current slice ingests steps, active calories, and total calories. Active
+calories are movement energy; total calories also include resting metabolism.
+The provider boundary and table can later be extended with sleep, resting heart
+rate, HRV, distance, stress, and Body Battery after their Garmin field semantics
+have been validated. Discrete
 activities remain Strava's responsibility to avoid duplicate workouts.
 
 The worker fetches the latest seven days on every run. This intentionally
@@ -79,11 +81,11 @@ the next seven-day fetch.
 
 ## Canonical record
 
-`public.daily_health_metrics` owns the normalized history. A Garmin step row
+`public.daily_health_metrics` owns the normalized history. A Garmin daily row
 retains:
 
 - the owning `user_id` and Garmin calendar `day`;
-- the canonical `steps` value;
+- canonical `steps`, `active_calories_kcal`, and `total_calories_kcal` values;
 - `source = garmin`;
 - `provider = garmin_connect_unofficial`;
 - a deterministic external identifier and the latest sync timestamp.
@@ -152,3 +154,7 @@ The task runs hourly and catches up the latest seven days after ordinary downtim
 Do not install it until the one-off live sync succeeds. Local and live schedules have
 different task names and may coexist, although only the live schedule is needed when
 the published app is the primary interface.
+
+To run independently of the owner's computer, use the private Railway cron
+deployment documented in `docs/integrations/RAILWAY.md`. Keep the Windows live
+task enabled until a scheduled Railway run has been verified.

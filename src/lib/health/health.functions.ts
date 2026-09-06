@@ -3,9 +3,11 @@ import { z } from "zod";
 
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
 
-export type DailySteps = {
+export type DailyHealth = {
   day: string;
-  steps: number;
+  steps: number | null;
+  activeCaloriesKcal: number | null;
+  totalCaloriesKcal: number | null;
   syncedAt: string;
 };
 
@@ -19,22 +21,28 @@ async function requireUser() {
   return { supabase, userId: data.user.id };
 }
 
-export const getDailySteps = createServerFn({ method: "GET" })
+export const getDailyHealth = createServerFn({ method: "GET" })
   .validator((data: { day: string }) => ({ day: daySchema.parse(data.day) }))
-  .handler(async ({ data }): Promise<DailySteps | null> => {
+  .handler(async ({ data }): Promise<DailyHealth | null> => {
     const { supabase, userId } = await requireUser();
     const { data: row, error } = await supabase
       .from("daily_health_metrics")
-      .select("day, steps, synced_at")
+      .select("day, steps, active_calories_kcal, total_calories_kcal, synced_at")
       .eq("user_id", userId)
       .eq("day", data.day)
       .eq("source", "garmin")
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    if (!row || row.steps === null) return null;
+    if (!row) return null;
 
-    return { day: row.day, steps: row.steps, syncedAt: row.synced_at };
+    return {
+      day: row.day,
+      steps: row.steps,
+      activeCaloriesKcal: row.active_calories_kcal,
+      totalCaloriesKcal: row.total_calories_kcal,
+      syncedAt: row.synced_at,
+    };
   });
 
 export const getGarminSyncStatus = createServerFn({ method: "GET" }).handler(

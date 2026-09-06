@@ -1,4 +1,4 @@
-"""Automatic Garmin Connect steps sync for Personal Observability.
+"""Automatic Garmin Connect daily-health sync for Personal Observability.
 
 The worker deliberately authenticates to Supabase as the app user. Its writes
 therefore pass through the same Row Level Security policies as browser requests;
@@ -99,6 +99,81 @@ def normalize_steps(rows: Any, user_id: str, synced_at: str) -> list[dict[str, A
         }
 
     return [normalized_by_day[day] for day in sorted(normalized_by_day)]
+
+
+def _whole_non_negative(value: Any) -> int | None:
+    """Return a provider measurement as a whole number, or None when invalid."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    return round(value)
+
+
+def normalize_daily_health(
+    rows: Any, user_id: str, synced_at: str
+) -> list[dict[str, Any]]:
+    """Translate Garmin daily summaries into the product's canonical fields.
+
+    Total calories include resting metabolism. Active calories are the useful
+    movement-only value, so both are retained instead of presenting one
+    ambiguous "calories burned" number.
+    """
+    if not isinstance(rows, list):
+        raise SyncError("Garmin returned an unexpected daily-health response.")
+
+    normalized_by_day: dict[str, dict[str, Any]] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+
+        day = item.get("calendarDate") or item.get("date")
+        if not isinstance(day, str):
+            continue
+        try:
+            date.fromisoformat(day)
+        except ValueError:
+            continue
+
+        steps = _whole_non_negative(item.get("totalSteps", item.get("steps")))
+        active_calories = _whole_non_negative(item.get("activeKilocalories"))
+        total_calories = _whole_non_negative(item.get("totalKilocalories"))
+        if steps is None and active_calories is None and total_calories is None:
+            continue
+
+        normalized_by_day[day] = {
+            "user_id": user_id,
+            "day": day,
+            "steps": steps,
+            "active_calories_kcal": active_calories,
+            "total_calories_kcal": total_calories,
+            "source": SOURCE,
+            "provider": PROVIDER,
+            "external_id": f"garmin:{day}",
+            "synced_at": synced_at,
+        }
+
+    return [normalized_by_day[day] for day in sorted(normalized_by_day)]
+
+
+def validate_railway_volume(session_path: Path, token_store: Path) -> None:
+    """Refuse a Railway run that would lose bearer tokens after the container exits."""
+    if not os.getenv("RAILWAY_ENVIRONMENT_NAME"):
+        return
+
+    raw_mount = os.getenv("RAILWAY_VOLUME_MOUNT_PATH")
+    if not raw_mount:
+        raise SyncError("Railway requires a persistent volume mounted at /data.")
+
+    mount = Path(raw_mount).resolve()
+    session_paths = (
+        ("SUPABASE_SESSION_FILE", session_path),
+        ("GARMIN_TOKEN_STORE", token_store),
+    )
+    for label, path in session_paths:
+        try:
+            path.resolve().relative_to(mount)
+        except ValueError as error:
+            message = f"{label} must be stored below the Railway volume at {mount}."
+            raise SyncError(message) from error
 
 
 class SupabaseSession:
@@ -212,6 +287,7 @@ def configuration() -> tuple[SupabaseSession, Path]:
     base_url = docker_host_url(raw_url, in_docker)
     session_path = Path(os.getenv("SUPABASE_SESSION_FILE", "/data/supabase-session.json"))
     token_store = Path(os.getenv("GARMIN_TOKEN_STORE", "/data/garmin"))
+    validate_railway_volume(session_path, token_store)
     return SupabaseSession(base_url, key, session_path), token_store
 
 
@@ -280,14 +356,25 @@ def sync(days: int) -> None:
 
     end = current_london_day()
     start = end - timedelta(days=days - 1)
-    raw_rows = garmin.get_daily_steps(start.isoformat(), end.isoformat())
+    raw_rows = []
+    for offset in range(days):
+        requested_day = (start + timedelta(days=offset)).isoformat()
+        summary = garmin.get_stats(requested_day)
+        if isinstance(summary, dict) and not summary.get("calendarDate"):
+            summary = {**summary, "calendarDate": requested_day}
+        raw_rows.append(summary)
     synced_at = datetime.now(timezone.utc).isoformat()
-    rows = normalize_steps(raw_rows, user_id, synced_at)
+    rows = normalize_daily_health(raw_rows, user_id, synced_at)
     if not rows:
-        raise SyncError("Garmin returned no usable step records for the requested range.")
+        raise SyncError(
+            "Garmin returned no usable daily-health records for the requested range."
+        )
 
     supabase.upsert(rows, session)
-    print(f"Synced {len(rows)} Garmin step day(s), {rows[0]['day']} to {rows[-1]['day']}.")
+    print(
+        f"Synced {len(rows)} Garmin health day(s), "
+        f"{rows[0]['day']} to {rows[-1]['day']}."
+    )
 
 
 def status() -> None:
@@ -309,13 +396,17 @@ def status() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Sync Garmin steps into Personal Observability.")
+    parser = argparse.ArgumentParser(
+        description="Sync Garmin daily health into Personal Observability."
+    )
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("setup", help="Authenticate once to the app and Garmin Connect.")
     subcommands.add_parser(
         "setup-app", help="Authenticate only to the app while reusing cached Garmin tokens."
     )
-    sync_parser = subcommands.add_parser("sync", help="Fetch and upsert recent step totals.")
+    sync_parser = subcommands.add_parser(
+        "sync", help="Fetch and upsert recent daily health totals."
+    )
     sync_parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
     subcommands.add_parser("status", help="Check whether both cached sessions exist.")
     subcommands.add_parser("test", help="Run the worker unit tests.")

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
-import { getDailySteps } from "@/lib/health/health.functions";
+import { getDailyHealth } from "@/lib/health/health.functions";
 import { currentLondonDay } from "@/lib/weight/units";
 
 export const Route = createFileRoute("/")({
@@ -22,13 +22,13 @@ export const Route = createFileRoute("/")({
   }),
   loader: async () => {
     const day = currentLondonDay();
-    return { steps: await getDailySteps({ data: { day } }) };
+    return { health: await getDailyHealth({ data: { day } }) };
   },
   component: Today,
 });
 
 function Today() {
-  const { steps } = Route.useLoaderData();
+  const { health } = Route.useLoaderData();
 
   return (
     <>
@@ -47,9 +47,14 @@ function Today() {
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">Snapshot</h2>
           <div className="mt-2">
+            <PlaceholderRow label="Steps" value={health?.steps?.toLocaleString("en-GB") ?? "—"} />
             <PlaceholderRow
-              label="Steps"
-              value={steps ? steps.steps.toLocaleString("en-GB") : "—"}
+              label="Active calories"
+              value={formatCalories(health?.activeCaloriesKcal)}
+            />
+            <PlaceholderRow
+              label="Total calories"
+              value={formatCalories(health?.totalCaloriesKcal)}
             />
             <PlaceholderRow label="Weight" value="—" />
             <PlaceholderRow label="Commits" value="—" />
@@ -59,4 +64,8 @@ function Today() {
       </div>
     </>
   );
+}
+
+function formatCalories(value: number | null | undefined): string {
+  return value === null || value === undefined ? "—" : `${value.toLocaleString("en-GB")} kcal`;
 }

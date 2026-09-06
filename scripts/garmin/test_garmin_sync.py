@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 from unittest.mock import patch
 
 from garmin_sync import (
@@ -7,7 +8,9 @@ from garmin_sync import (
     app_environment,
     current_london_day,
     docker_host_url,
+    normalize_daily_health,
     normalize_steps,
+    validate_railway_volume,
 )
 
 
@@ -75,6 +78,76 @@ class DockerHostUrlTests(unittest.TestCase):
         )
 
 
+class NormalizeDailyHealthTests(unittest.TestCase):
+    def test_keeps_active_and_total_calories_distinct(self) -> None:
+        rows = normalize_daily_health(
+            [
+                {
+                    "calendarDate": "2026-09-06",
+                    "totalSteps": 6789,
+                    "activeKilocalories": 456.4,
+                    "totalKilocalories": 2345.6,
+                }
+            ],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows[0]["steps"], 6789)
+        self.assertEqual(rows[0]["active_calories_kcal"], 456)
+        self.assertEqual(rows[0]["total_calories_kcal"], 2346)
+
+    def test_keeps_a_day_when_only_calories_are_available(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-06", "activeKilocalories": 321}],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+        )
+
+        self.assertIsNone(rows[0]["steps"])
+        self.assertEqual(rows[0]["active_calories_kcal"], 321)
+
+    def test_skips_a_day_with_no_valid_measurements(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-06", "totalSteps": True, "totalKilocalories": -1}],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows, [])
+
+
+class RailwayVolumeTests(unittest.TestCase):
+    def test_requires_a_volume_on_railway(self) -> None:
+        environment = {"RAILWAY_ENVIRONMENT_NAME": "production"}
+        with patch.dict("os.environ", environment, clear=True):
+            with self.assertRaisesRegex(SyncError, "persistent volume"):
+                validate_railway_volume(Path("/data/session.json"), Path("/data/garmin"))
+
+    def test_accepts_both_sessions_inside_the_volume(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "RAILWAY_ENVIRONMENT_NAME": "production",
+                "RAILWAY_VOLUME_MOUNT_PATH": "/data",
+            },
+            clear=True,
+        ):
+            validate_railway_volume(Path("/data/session.json"), Path("/data/garmin"))
+
+    def test_rejects_a_session_outside_the_volume(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "RAILWAY_ENVIRONMENT_NAME": "production",
+                "RAILWAY_VOLUME_MOUNT_PATH": "/data",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(SyncError, "SUPABASE_SESSION_FILE"):
+                validate_railway_volume(Path("/tmp/session.json"), Path("/data/garmin"))
+
+
 class LondonDayTests(unittest.TestCase):
     def test_uses_the_next_london_day_during_bst(self) -> None:
         instant = datetime(2026, 8, 1, 23, 30, tzinfo=timezone.utc)
@@ -99,6 +172,7 @@ class AppEnvironmentTests(unittest.TestCase):
             "os.environ", {"PERSONAL_OBSERVABILITY_ENVIRONMENT": "sensitive-value"}
         ):
             self.assertEqual(app_environment(), "configured")
+
 
 if __name__ == "__main__":
     unittest.main()

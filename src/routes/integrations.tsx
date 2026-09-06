@@ -41,7 +41,7 @@ function Integrations() {
             <PlaceholderRow label="GitHub — account two" value="Not connected" />
             <PlaceholderRow label="Strava" value="Not connected" />
             <PlaceholderRow
-              label="Garmin daily steps"
+              label="Garmin daily health"
               value={
                 garmin ? `Last synced ${formatSyncTime(garmin.lastSyncedAt)}` : "Setup required"
               }
@@ -56,7 +56,7 @@ function Integrations() {
           label="Garmin sync"
           note={
             garmin
-              ? `Automatic local sync is active; latest Garmin day is ${garmin.latestDay}.`
+              ? `Automatic sync is active; latest Garmin day is ${garmin.latestDay}.`
               : "Run the one-time Garmin setup, then install the hourly scheduled task."
           }
           height="h-20"

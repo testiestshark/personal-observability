@@ -10,6 +10,7 @@ export type Database = {
     Tables: {
       daily_health_metrics: {
         Row: {
+          active_calories_kcal: number | null;
           created_at: string;
           day: string;
           external_id: string | null;
@@ -18,9 +19,11 @@ export type Database = {
           source: string;
           steps: number | null;
           synced_at: string;
+          total_calories_kcal: number | null;
           user_id: string;
         };
         Insert: {
+          active_calories_kcal?: number | null;
           created_at?: string;
           day: string;
           external_id?: string | null;
@@ -29,9 +32,11 @@ export type Database = {
           source: string;
           steps?: number | null;
           synced_at?: string;
+          total_calories_kcal?: number | null;
           user_id: string;
         };
         Update: {
+          active_calories_kcal?: number | null;
           created_at?: string;
           day?: string;
           external_id?: string | null;
@@ -40,6 +45,7 @@ export type Database = {
           source?: string;
           steps?: number | null;
           synced_at?: string;
+          total_calories_kcal?: number | null;
           user_id?: string;
         };
         Relationships: [];
