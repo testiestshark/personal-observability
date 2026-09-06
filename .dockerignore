@@ -1,0 +1,10 @@
+.git
+.github
+.garmin-sync
+.env
+.env.*
+node_modules
+.output
+dist
+coverage
+.wrangler

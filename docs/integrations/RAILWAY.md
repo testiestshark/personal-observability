@@ -43,6 +43,18 @@ session to `/data/supabase-session-live.json`. It never uploads Garmin or app
 passwords. The tokens can refresh themselves, but they are equivalent to login
 credentials and should be protected accordingly.
 
+If Railway's GitHub app has not been granted repository access, deploy the
+checked-out commit directly instead:
+
+```powershell
+railway deployment up --service garmin-sync --environment production --detach --yes
+```
+
+Railway respects `.gitignore` for its source archive, and `.dockerignore`
+independently excludes `.garmin-sync/` plus all local environment files from the
+Docker build context. Granting the Railway GitHub app access later enables
+automatic redeployment from `main`; it is not required for scheduled execution.
+
 ## Verify and cut over
 
 Deploy or manually trigger the Railway cron service. A successful log ends with
