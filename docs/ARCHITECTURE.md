@@ -4,6 +4,57 @@
 
 TanStack Start (React 19 + Vite, SSR via Nitro) on the frontend, Supabase (Postgres, Auth, Storage) as the backend. Package manager/runtime: Bun.
 
+## Planned integration architecture
+
+**Status: Planned / Not Implemented**
+
+Personal Observability will aggregate records from provider-specific integration
+boundaries into its own database:
+
+```text
+                     Personal Observability
+                            Database
+                               ^
+             +-----------------+-----------------+
+             |                 |                 |
+           Terra             Strava            GitHub
+             ^                 ^                 ^
+           Garmin         Hevy / Garmin        GitHub
+             |
+        health/wellness
+```
+
+The intended responsibilities are:
+
+- **Terra / Garmin:** daily health and wellness data.
+- **Strava:** discrete fitness and activity data.
+- **Hevy:** strength-training logging, synced into Strava.
+- **GitHub:** development and productivity activity.
+- **Personal Observability database:** canonical aggregation layer and long-term
+  source of truth.
+
+External services are data providers; Personal Observability owns its canonical
+history. Records from different domains can be combined by time and date, but
+must retain provenance concepts such as their original source, ingestion
+provider, external identifier, and ingestion time.
+
+Provider boundaries should translate external payloads into internal records so
+one provider can be replaced without changing unrelated product code. In
+particular, Terra may later be replaced by a direct Garmin integration or a
+different health provider.
+
+Garmin workouts may reach Strava while Garmin wellness data reaches Terra. The
+system must not blindly create two copies of the same activity: Terra is
+initially responsible for health/wellness records and Strava for activities.
+Future activity deduplication should prefer external IDs and provenance, with
+timestamps, activity type, and duration as additional signals.
+
+Detailed planned designs:
+
+- [Hevy to Strava activity integration](integrations/HEVY_STRAVA.md)
+- [Garmin to Terra health and wellness integration](integrations/GARMIN_TERRA.md)
+- [GitHub integration](integrations/GITHUB.md)
+
 ## Environments and sync model
 
 Two independent Supabase projects exist:

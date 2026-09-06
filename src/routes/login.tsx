@@ -1,4 +1,4 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, type FormEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ export const Route = createFileRoute("/login")({
 type Mode = "signin" | "signup";
 
 function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,9 +54,11 @@ function LoginPage() {
         }
       }
 
-      // Re-run loaders so the root context picks up the new session cookie.
-      await router.invalidate();
-      await router.navigate({ to: "/" });
+      // The session cookie is written by the sign-in server function. Use a full
+      // document navigation so the next request is rendered with that cookie;
+      // an in-place router invalidation can race the browser committing it in
+      // hosted Lovable previews and leave the user on the login route.
+      window.location.replace("/");
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {
