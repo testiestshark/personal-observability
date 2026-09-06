@@ -11,9 +11,13 @@ $action = New-ScheduledTaskAction `
   -Execute "powershell.exe" `
   -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$runner`""
 
+$repetition = New-ScheduledTaskTrigger `
+  -Once `
+  -At (Get-Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes $EveryMinutes) `
+  -RepetitionDuration (New-TimeSpan -Days 1)
 $trigger = New-ScheduledTaskTrigger -Daily -At "00:05"
-$trigger.Repetition.Interval = "PT${EveryMinutes}M"
-$trigger.Repetition.Duration = "P1D"
+$trigger.Repetition = $repetition.Repetition
 $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
   -MultipleInstances IgnoreNew `
