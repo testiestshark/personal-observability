@@ -1,6 +1,8 @@
 # GitHub integration — Milestone 1: Connect GitHub
 
-Status: design only. No code, migrations, or GitHub configuration exist yet.
+Status: design only and parked. No code, migrations, or GitHub configuration exist
+yet. Lovable-hosted login, a blocking dependency, still does not work and was
+deliberately parked on 2026-09-06 so the project can move on.
 
 ## 1. Milestone definition
 
@@ -267,7 +269,11 @@ Consistent with this repo's existing rule: `.env.example` may contain empty vari
 
 ## 14. Open decisions
 
-- **Blocking dependency:** Personal Observability has no login/session system implemented yet (`requireSupabaseAuth` exists but is unused, no login route exists). This milestone assumes a PO session already exists to bind `state` to — that assumption itself needs to be resolved first, and isn't something this document can respons­ibly settle from the current repository evidence.
+- **Blocking dependency (parked):** A login/session implementation exists and works
+  locally, but login through the Lovable preview/deployment still does not work. This
+  milestone needs a reliable hosted PO session to bind `state` to. Hosted-login
+  investigation and this dependent milestone were deliberately parked on 2026-09-06;
+  do not treat local auth as satisfying the hosted dependency.
 - Whether to request `Contents: Read-only` now (avoids a future forced re-consent) vs. `Metadata: Read-only` only (strict least-privilege) — §5.
 - Whether the optional installation-revalidation-on-page-load check (§11) is in scope for this milestone or pushed to a later one.
 - Exact TanStack Start server-route file convention/location for Stages 3–4 — no existing example in this repo to follow; needs confirming against the installed `@tanstack/react-start` version at implementation time.

@@ -48,10 +48,9 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
  * one visitor's session would leak into another's render.
  */
 export function createSupabaseRequestClient() {
-  // Lovable's published runtime exposes the unprefixed names, while editor
-  // previews may only have the committed VITE_* public values available at
-  // build time. These values are intentionally public; secrets must never use
-  // this fallback.
+  // This fallback addresses the missing-variable error observed in Lovable previews,
+  // but hosted login remains broken and deliberately parked. These values are
+  // intentionally public; secrets must never use this fallback.
   const SUPABASE_URL = process.env["SUPABASE_URL"] || import.meta.env["VITE_SUPABASE_URL"];
   const SUPABASE_PUBLISHABLE_KEY =
     process.env["SUPABASE_PUBLISHABLE_KEY"] || import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];

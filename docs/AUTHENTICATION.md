@@ -1,8 +1,18 @@
-# Authentication — verification runbook
+# Authentication — local verification runbook
 
-This is a repeatable, local-only procedure for proving the auth system works, using nothing but what's currently committed on `feature/auth-foundation` plus Docker. For the design/architecture (why cookies, why no browser Supabase client, why the generated files are unused), see [ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication).
+This is a repeatable, local-only procedure for proving the auth system works against
+local Supabase, using the current checkout plus Docker. For the design/architecture
+(why cookies and why the generated files are unused), see
+[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication).
 
-Last confirmed working: 2026-08-02, by manual browser walkthrough (steps below) — account created, session persisted across refresh, matching local Supabase's `auth.users`.
+Local flow last confirmed working: 2026-09-06 — account created, login reached the app,
+the session persisted across a hard refresh, and the disposable user was removed.
+
+> **Lovable-hosted login status: NOT WORKING / PARKED.** As of 2026-09-06, the
+> preview/deployed app still cannot complete a usable login. Passing this runbook,
+> rendering the hosted login form, or producing a successful build does not prove the
+> hosted flow. Previous fixes addressed individual symptoms but did not solve it.
+> Further investigation is deliberately parked so the project can move on.
 
 ## Prerequisites
 
@@ -48,9 +58,14 @@ This wipes local `auth.users` along with everything else, so any account created
 6. **Click "Sign out" in Settings.**
    Expected: redirected to `/login`. Then navigating to `http://localhost:8080/` should redirect straight back to `/login` — confirms sign-out actually cleared the server-side session, not just client state.
 
-## Production-build check (catches bugs the dev server hides)
+## Production-build sanity check (not a hosted-login verification)
 
-The dev server reads `.env.local`, while hosted builds read the committed public values from `.env.production`. Lovable editor previews do not expose the unprefixed `SUPABASE_*` names to the server runtime, so the request-scoped server client must retain its fallback to the build-time `VITE_SUPABASE_*` values. A local-only check can therefore pass while preview fails — this is exactly how the 2026-09-06 preview sign-in outage shipped. Verify the built artifact, not just the dev server:
+The dev server reads `.env.local`, while hosted builds read the committed public values
+from `.env.production`. Lovable editor previews did not expose the unprefixed
+`SUPABASE_*` names to the server runtime, so a fallback to build-time
+`VITE_SUPABASE_*` values was added. That removed one observed configuration error but
+did not make hosted login work. These commands catch packaging regressions only; they
+are not an end-to-end hosted-auth test:
 
 ```powershell
 bun run build
@@ -66,7 +81,10 @@ Select-String -Path .output/public/assets/*.js -Pattern "Connect Supabase in Lov
 Get-ChildItem .output/server/_ssr/ | Where-Object { $_.Name -like "supabase-request.server*" }
 ```
 
-If the first command prints a match, the browser bundle contains the generated Supabase client and hosted auth will break — see [ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication) for why (`attachSupabaseAuth` re-registered in `src/start.ts` is the usual cause).
+If the first command prints a match, the browser bundle contains the generated Supabase
+client and may have reintroduced a known hosted failure mode — see
+[ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication). A clean result still
+does not establish that hosted auth works.
 
 Note that `bunx vite preview` does **not** work for this project: Nitro builds a Cloudflare Worker to `.output/server/`, while `vite preview` expects `dist/server/server.js`. A 500 from it is a tooling mismatch, not an app failure.
 
@@ -85,7 +103,10 @@ Open Supabase Studio at `http://127.0.0.1:54323` → Authentication → Users. T
 | 5    | Protection is bidirectional (signed-in users can't see `/login`)     |
 | 6    | Sign-out clears the server-recognized session, not just UI state     |
 
-Step 3+4 together are the property the GitHub integration milestone specifically depends on (see [integrations/GITHUB.md § 3](integrations/GITHUB.md)) — a callback from an external provider is a top-level browser navigation carrying cookies, not a `fetch` carrying an `Authorization` header, so this had to work via cookies or that milestone couldn't proceed at all.
+Step 3+4 together are the property the GitHub integration milestone depends on (see
+[integrations/GITHUB.md § 3](integrations/GITHUB.md)). They are proven locally only;
+because Lovable-hosted login is broken and parked, they are not currently an available
+hosted dependency for that milestone.
 
 ## Troubleshooting
 

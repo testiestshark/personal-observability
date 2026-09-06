@@ -62,6 +62,13 @@ code, not in the UI. Conventions, and what jsdom cannot do, are in
 
 ## Authentication
 
+**Current status (2026-09-06): hosted login is not working and is deliberately parked.**
+The cookie-based flow works against local Supabase, but signing in through the Lovable
+preview/deployment still fails. Previous changes removed individual errors and passed
+local/build checks without restoring the real hosted login flow. Do not claim hosted
+auth is fixed, verified, production-ready, or an available dependency. Do not resume
+debugging it unless the owner explicitly reopens the work.
+
 Cookie-based Supabase Auth (email + password) lives in `src/lib/auth/`. All auth runs through server functions; there is no Supabase client in the browser. Route protection is the `beforeLoad` in `src/routes/__root.tsx`.
 
 The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middleware.ts`, `auth-attacher.ts`) implement an older `localStorage`/Bearer-token approach — don't build on them.

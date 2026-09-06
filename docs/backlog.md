@@ -3,7 +3,7 @@
 **This is the list of what needs doing.** When there is no specific instruction about
 what to work on, the next item here is the answer.
 
-Last reviewed: 2026-08-19.
+Last reviewed: 2026-09-06.
 
 ## How this file works
 
@@ -42,6 +42,12 @@ _Nothing outstanding._
 ## Deliberate non-goals
 
 Recorded so they are not raised again as gaps.
+
+- **Further Lovable-hosted login debugging.** Parked by explicit decision on
+  2026-09-06 after multiple attempted fixes passed local/build checks but the real
+  preview/deployed login still did not work. Local Supabase auth remains usable for
+  development. Do not reopen this work, describe hosted auth as fixed, or make it an
+  assumed dependency unless the owner explicitly changes the decision.
 
 - **Removing the signup code now that signup is closed.** Decided on 2026-08-19.
   Public signup is off in two places — `VITE_ALLOW_SIGNUP` defaults to closed (see

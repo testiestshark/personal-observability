@@ -115,3 +115,9 @@ bunx supabase stop # stop the local Supabase stack
 ```
 
 The hosted app (this repo's `main` branch, synced with Lovable) connects to **hosted** Supabase — only local development uses the local stack. See [CLAUDE.md](CLAUDE.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details on the local-vs-hosted split and secrets policy.
+
+> **Hosted login status — parked:** Email/password login through the Lovable
+> preview/deployment still does not work as of 2026-09-06. Local Supabase auth
+> works, but that does not prove the hosted flow. Further Lovable-login debugging
+> is deliberately parked so work can continue elsewhere; do not describe hosted
+> authentication as fixed or production-ready.
