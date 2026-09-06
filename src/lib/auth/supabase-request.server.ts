@@ -48,13 +48,20 @@ function createSupabaseFetch(supabaseKey: string): typeof fetch {
  * one visitor's session would leak into another's render.
  */
 export function createSupabaseRequestClient() {
-  const SUPABASE_URL = process.env["SUPABASE_URL"];
-  const SUPABASE_PUBLISHABLE_KEY = process.env["SUPABASE_PUBLISHABLE_KEY"];
+  // Lovable's published runtime exposes the unprefixed names, while editor
+  // previews may only have the committed VITE_* public values available at
+  // build time. These values are intentionally public; secrets must never use
+  // this fallback.
+  const SUPABASE_URL = process.env["SUPABASE_URL"] || import.meta.env["VITE_SUPABASE_URL"];
+  const SUPABASE_PUBLISHABLE_KEY =
+    process.env["SUPABASE_PUBLISHABLE_KEY"] || import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"];
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [
-      ...(!SUPABASE_URL ? ["SUPABASE_URL"] : []),
-      ...(!SUPABASE_PUBLISHABLE_KEY ? ["SUPABASE_PUBLISHABLE_KEY"] : []),
+      ...(!SUPABASE_URL ? ["SUPABASE_URL/VITE_SUPABASE_URL"] : []),
+      ...(!SUPABASE_PUBLISHABLE_KEY
+        ? ["SUPABASE_PUBLISHABLE_KEY/VITE_SUPABASE_PUBLISHABLE_KEY"]
+        : []),
     ];
     throw new Error(`Missing Supabase environment variable(s): ${missing.join(", ")}.`);
   }

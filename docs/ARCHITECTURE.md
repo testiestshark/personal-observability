@@ -70,7 +70,7 @@ Local frontend → local Supabase API (127.0.0.1:54321) → local Postgres (127.
 
 The hosted Lovable app has the equivalent relationship against the hosted project, independently.
 
-**The hosted build gets its public config from the committed `.env.production`**, because Vite inlines `VITE_*` at build time and a gitignored `.env` on a developer machine can never reach Lovable's builder. Server-side runtime variables (and any actual secret) are configured in Lovable's own panel instead.
+**The hosted build gets its public config from the committed `.env.production`**, because Vite inlines `VITE_*` at build time and a gitignored `.env` on a developer machine can never reach Lovable's builder. The request-scoped server client prefers the unprefixed `SUPABASE_*` runtime variables and falls back to those same build-time `VITE_SUPABASE_*` public values. That fallback is required for Lovable editor previews, whose server runtime does not expose the unprefixed names. It is safe only for the public project URL and publishable key; any actual secret must remain a server-side runtime variable configured in the hosting panel.
 
 When rotating these, take the values from the _hosted_ project's dashboard (Project Settings → API on `ivdhucdiycnbgvdetagw`) — never from `.env.local`, which points at the local stack, and never from `.env`, which historically held a **different, now-defunct project** (`sepdqkfqgysnuriynhid`) and is a live trap for exactly this mistake. Verify after any change by building and grepping the bundle:
 

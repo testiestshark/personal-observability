@@ -50,7 +50,7 @@ This wipes local `auth.users` along with everything else, so any account created
 
 ## Production-build check (catches bugs the dev server hides)
 
-The dev server reads `.env.local`, which defines `VITE_SUPABASE_*`. Hosted builds do not have those. Any code that quietly depends on them therefore passes locally and fails only in production — this is exactly how the 2026-08-02 hosted sign-in outage shipped. So verify the built artifact, not just the dev server:
+The dev server reads `.env.local`, while hosted builds read the committed public values from `.env.production`. Lovable editor previews do not expose the unprefixed `SUPABASE_*` names to the server runtime, so the request-scoped server client must retain its fallback to the build-time `VITE_SUPABASE_*` values. A local-only check can therefore pass while preview fails — this is exactly how the 2026-09-06 preview sign-in outage shipped. Verify the built artifact, not just the dev server:
 
 ```powershell
 bun run build
