@@ -130,7 +130,6 @@ class NormalizeDailyHealthTests(unittest.TestCase):
                         "sleepStartTimestampGMT": 1788649200000,
                         "sleepEndTimestampGMT": 1788678000000,
                         "sleepTimeSeconds": 27000,
-                        "sleepScores": {"overall": {"value": 84}},
                     }
                 }
             },
@@ -141,7 +140,6 @@ class NormalizeDailyHealthTests(unittest.TestCase):
 
         self.assertEqual(rows[0]["resting_heart_rate_bpm"], 52)
         self.assertEqual(rows[0]["total_sleep_seconds"], 27000)
-        self.assertEqual(rows[0]["sleep_score"], 84)
         self.assertEqual(rows[0]["vo2_max"], 51.0)
         self.assertTrue(rows[0]["sleep_start_at"].endswith("+00:00"))
         self.assertTrue(rows[0]["sleep_end_at"].endswith("+00:00"))

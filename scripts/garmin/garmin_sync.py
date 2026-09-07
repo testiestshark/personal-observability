@@ -155,26 +155,12 @@ def _sleep_fields(payload: Any) -> dict[str, Any]:
     if not isinstance(sleep, dict):
         return {}
 
-    scores = sleep.get("sleepScores")
-    score: Any = None
-    if isinstance(scores, dict):
-        overall = scores.get("overall")
-        score = overall.get("value") if isinstance(overall, dict) else None
-        if score is None:
-            score = scores.get("overallScore")
-    if score is None:
-        score = sleep.get("sleepScore")
-    normalized_score = _whole_non_negative(score)
-    if normalized_score is not None and normalized_score > 100:
-        normalized_score = None
-
     return {
         "sleep_start_at": _provider_utc_timestamp(
             sleep.get("sleepStartTimestampGMT")
         ),
         "sleep_end_at": _provider_utc_timestamp(sleep.get("sleepEndTimestampGMT")),
         "total_sleep_seconds": _whole_non_negative(sleep.get("sleepTimeSeconds")),
-        "sleep_score": normalized_score,
     }
 
 

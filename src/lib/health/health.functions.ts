@@ -11,7 +11,6 @@ export type DailyHealth = {
   sleepStartAt: string | null;
   sleepEndAt: string | null;
   totalSleepSeconds: number | null;
-  sleepScore: number | null;
   restingHeartRateBpm: number | null;
   vo2Max: number | null;
   sourceSyncedAt: string | null;
@@ -48,7 +47,7 @@ export const getDailyHealth = createServerFn({ method: "GET" })
     const { data: row, error } = await supabase
       .from("daily_health_metrics")
       .select(
-        "day, steps, active_calories_kcal, total_calories_kcal, sleep_start_at, sleep_end_at, total_sleep_seconds, sleep_score, resting_heart_rate_bpm, vo2_max, source_synced_at, synced_at",
+        "day, steps, active_calories_kcal, total_calories_kcal, sleep_start_at, sleep_end_at, total_sleep_seconds, resting_heart_rate_bpm, vo2_max, source_synced_at, synced_at",
       )
       .eq("user_id", userId)
       .eq("day", data.day)
@@ -66,7 +65,6 @@ export const getDailyHealth = createServerFn({ method: "GET" })
       sleepStartAt: row.sleep_start_at,
       sleepEndAt: row.sleep_end_at,
       totalSleepSeconds: row.total_sleep_seconds,
-      sleepScore: row.sleep_score,
       restingHeartRateBpm: row.resting_heart_rate_bpm,
       vo2Max: row.vo2_max,
       sourceSyncedAt: row.source_synced_at,

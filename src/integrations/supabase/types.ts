@@ -18,7 +18,6 @@ export type Database = {
           provider: string;
           resting_heart_rate_bpm: number | null;
           sleep_end_at: string | null;
-          sleep_score: number | null;
           sleep_start_at: string | null;
           source: string;
           source_synced_at: string | null;
@@ -38,7 +37,6 @@ export type Database = {
           provider: string;
           resting_heart_rate_bpm?: number | null;
           sleep_end_at?: string | null;
-          sleep_score?: number | null;
           sleep_start_at?: string | null;
           source: string;
           source_synced_at?: string | null;
@@ -58,7 +56,6 @@ export type Database = {
           provider?: string;
           resting_heart_rate_bpm?: number | null;
           sleep_end_at?: string | null;
-          sleep_score?: number | null;
           sleep_start_at?: string | null;
           source?: string;
           source_synced_at?: string | null;

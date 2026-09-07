@@ -16,7 +16,7 @@ that ingestion be automatic.
 ## Scope
 
 The current slice ingests steps, active calories, total calories, sleep start/end,
-total sleep, sleep score, resting heart rate, VO2 max, Garmin's source-sync time,
+total sleep, resting heart rate, VO2 max, Garmin's source-sync time,
 and recorded fitness activities. Active calories are movement energy; total
 calories also include resting metabolism. Garmin activities retain useful summary
 fields but deliberately omit route coordinates. Detailed gym exercises and sets

@@ -90,12 +90,6 @@ function Today() {
       icon: Moon,
     },
     {
-      label: "Sleep score",
-      value: health?.sleepScore?.toLocaleString("en-GB") ?? "—",
-      note: "Out of 100",
-      icon: Moon,
-    },
-    {
       label: "Resting heart rate",
       value: formatHeartRate(health?.restingHeartRateBpm),
       note: "Daily resting value",
