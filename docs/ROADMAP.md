@@ -15,8 +15,8 @@ The coarse view: milestones and data domains. **Concrete, pick-up-able tasks liv
   dashboard reads, Dockerised worker, steps/calorie/sleep/resting-HR/VO2-max and
   recorded-activity ingestion, account authentication,
   hourly Windows scheduling, and successful end-to-end hosted sync.
-- Garmin Railway production: hourly cron worker, persistent bearer-token volume,
-  secure token upload helper, and operating runbook.
+- Garmin Railway production: hourly cron worker, persistent Garmin-session volume,
+  fresh per-run app authentication, secure token upload helper, and operating runbook.
 
 ## Parked
 

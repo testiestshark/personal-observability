@@ -545,6 +545,20 @@ def authenticate_app(supabase: SupabaseSession) -> tuple[dict[str, Any], str]:
     return session, identity
 
 
+def session_for_sync(supabase: SupabaseSession) -> dict[str, Any]:
+    """Use dedicated runtime credentials when configured, otherwise reuse the cache."""
+    app_email = os.getenv("PERSONAL_OBSERVABILITY_APP_EMAIL", "").strip()
+    app_password = os.getenv("PERSONAL_OBSERVABILITY_APP_PASSWORD", "")
+    if bool(app_email) != bool(app_password):
+        raise SyncError(
+            "PERSONAL_OBSERVABILITY_APP_EMAIL and "
+            "PERSONAL_OBSERVABILITY_APP_PASSWORD must be configured together."
+        )
+    if app_email and app_password:
+        return supabase.login(app_email, app_password)
+    return supabase.active()
+
+
 def setup_app() -> None:
     supabase, token_store = configuration()
     _, app_identity = authenticate_app(supabase)
@@ -579,7 +593,7 @@ def sync(days: int) -> None:
         raise SyncError("--days must be between 1 and 365.")
 
     supabase, token_store = configuration()
-    session = supabase.active()
+    session = session_for_sync(supabase)
     user = session.get("user")
     user_id = user.get("id") if isinstance(user, dict) else None
     if not isinstance(user_id, str) or not user_id:

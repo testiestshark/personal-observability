@@ -104,10 +104,11 @@ inside Lovable:
 Garmin Watch -> Garmin Connect -> local Docker worker -> hosted Supabase -> published app
 ```
 
-The production worker runs as a private Railway cron service with bearer tokens on
-its persistent volume. A local Windows worker remains available for development and
-recovery. Both sign in to Supabase as the app user, so existing RLS ownership checks
-remain in force. The published frontend never receives Garmin credentials or tokens.
+The production worker runs as a private Railway cron service with its Garmin bearer
+session on a persistent volume. It signs in to Supabase afresh from private Railway
+variables each run. A local Windows worker remains available for development and
+recovery. Both use the app user, so existing RLS ownership checks remain in force.
+The published frontend never receives Garmin credentials or tokens.
 
 This design avoids both a paid health-data intermediary and a public server holding
 the Garmin session. It does mean the computer and Docker Desktop must run periodically.

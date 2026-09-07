@@ -11,6 +11,7 @@ from garmin_sync import (
     normalize_activities,
     normalize_daily_health,
     normalize_steps,
+    session_for_sync,
     validate_railway_volume,
     _vo2_max,
 )
@@ -256,6 +257,56 @@ class AppEnvironmentTests(unittest.TestCase):
             "os.environ", {"PERSONAL_OBSERVABILITY_ENVIRONMENT": "sensitive-value"}
         ):
             self.assertEqual(app_environment(), "configured")
+
+
+class SessionForSyncTests(unittest.TestCase):
+    class FakeSupabase:
+        def __init__(self) -> None:
+            self.login_calls = []
+            self.active_calls = 0
+
+        def login(self, email: str, password: str) -> dict:
+            self.login_calls.append((email, password))
+            return {"user": {"id": "user-1"}}
+
+        def active(self) -> dict:
+            self.active_calls += 1
+            return {"user": {"id": "cached-user"}}
+
+    def test_logs_in_afresh_when_runtime_credentials_are_configured(self) -> None:
+        supabase = self.FakeSupabase()
+        with patch.dict(
+            "os.environ",
+            {
+                "PERSONAL_OBSERVABILITY_APP_EMAIL": "person@example.com",
+                "PERSONAL_OBSERVABILITY_APP_PASSWORD": "secret",
+            },
+            clear=True,
+        ):
+            session = session_for_sync(supabase)
+
+        self.assertEqual(session["user"]["id"], "user-1")
+        self.assertEqual(supabase.login_calls, [("person@example.com", "secret")])
+        self.assertEqual(supabase.active_calls, 0)
+
+    def test_uses_the_cached_session_when_runtime_credentials_are_absent(self) -> None:
+        supabase = self.FakeSupabase()
+        with patch.dict("os.environ", {}, clear=True):
+            session = session_for_sync(supabase)
+
+        self.assertEqual(session["user"]["id"], "cached-user")
+        self.assertEqual(supabase.login_calls, [])
+        self.assertEqual(supabase.active_calls, 1)
+
+    def test_rejects_a_partial_runtime_configuration(self) -> None:
+        supabase = self.FakeSupabase()
+        with patch.dict(
+            "os.environ",
+            {"PERSONAL_OBSERVABILITY_APP_EMAIL": "person@example.com"},
+            clear=True,
+        ):
+            with self.assertRaisesRegex(SyncError, "must be configured together"):
+                session_for_sync(supabase)
 
 
 if __name__ == "__main__":

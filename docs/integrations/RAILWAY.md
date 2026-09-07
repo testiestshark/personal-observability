@@ -9,10 +9,10 @@ longer depends on this computer or Docker Desktop being awake:
 Garmin Watch -> Garmin Connect -> Railway cron worker -> hosted Supabase -> published app
 ```
 
-The worker starts, refreshes the latest seven days, writes as the existing app
-user through Row Level Security, and exits. It does not expose a web server or
-public domain. Reprocessing seven days makes missed runs and late watch uploads
-self-healing.
+The worker starts, signs in as the existing app user, refreshes the latest seven
+days, writes through Row Level Security, and exits. It does not expose a web
+server or public domain. Reprocessing seven days makes missed runs and late
+watch uploads self-healing.
 
 ## One-time Railway setup
 
@@ -20,7 +20,8 @@ self-healing.
    `main` branch.
 2. In the service variables, paste the keys from
    `scripts/garmin/railway.env.example`, substituting the two public hosted
-   Supabase values from `.env.production`.
+   Supabase values from `.env.production`. Enter the app email and password
+   directly in Railway's private Variables editor; never commit the password.
 3. Attach a persistent volume named `garmin-data` at `/data`. The worker refuses
    to run on Railway without one, protecting the sessions from disappearing
    with an ephemeral container.
@@ -29,19 +30,18 @@ self-healing.
    exits after completion.
 5. Do not generate a Railway domain. This is a private outbound-only job.
 
-The only sensitive material is already cached locally and gitignored. Do not
-paste either token file into variables, logs, source control, or chat. Install
-the Railway CLI, authenticate it, link this folder to the new project/service,
-then copy the two sessions into the volume:
+The Garmin bearer session is cached locally and gitignored. Do not paste it into
+variables, logs, source control, or chat. Install the Railway CLI, authenticate
+it, link this folder to the new project/service, then copy the Garmin session
+into the volume:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/garmin/upload-railway-state.ps1 -Volume garmin-data
 ```
 
-The helper uploads `.garmin-sync/garmin/` to `/data/garmin/` and the hosted app
-session to `/data/supabase-session-live.json`. It never uploads Garmin or app
-passwords. The tokens can refresh themselves, but they are equivalent to login
-credentials and should be protected accordingly.
+The helper uploads `.garmin-sync/garmin/` to `/data/garmin/`. It never uploads
+the Garmin password. The worker signs in to Supabase afresh on every run using
+the private Railway app-login variables, avoiding shared refresh-token rotation.
 
 If Railway's GitHub app has not been granted repository access, deploy the
 checked-out commit directly instead:
@@ -68,17 +68,18 @@ Check that today's health and recorded activities update in the published app.
 The old Windows live task is no longer required; Railway owns the production
 schedule. Database writes are idempotent if a manual verification run overlaps.
 
-If Railway reports a missing app session or Garmin session, rerun the upload
-helper. If Garmin revokes its tokens, run the existing local interactive setup
-again and re-upload the refreshed state; never put the Garmin password in
-Railway.
+If Railway reports a missing Garmin session, rerun the upload helper. If Garmin
+revokes its tokens, run the existing local interactive setup again and re-upload
+the refreshed state; never put the Garmin password in Railway. App-authentication
+errors should be resolved by checking the two private app-login variables.
 
 ## Why the volume matters
 
 Railway containers are replaceable. The attached `/data` volume persists the
-Garmin token store and Supabase refresh token between hourly jobs. Railway sets
-`RAILWAY_VOLUME_MOUNT_PATH` automatically; the worker checks that both session
-paths are underneath it before contacting either provider.
+Garmin token store and the latest app session between hourly jobs. Railway sets
+`RAILWAY_VOLUME_MOUNT_PATH` automatically; the worker checks that both paths are
+underneath it before contacting either provider. The app session is replaceable
+because the worker signs in again at the start of every run.
 
 ## Future jobs on Railway
 

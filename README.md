@@ -147,5 +147,6 @@ The hosted database migration must be deployed before the first live sync. See
 [the Garmin integration runbook](docs/integrations/GARMIN.md#live-setup-and-verification).
 
 To make the live sync independent of this computer, deploy the same worker as a
-private Railway cron service. Repository setup and the secure token-transfer
-procedure are in [the Railway runbook](docs/integrations/RAILWAY.md).
+private Railway cron service. Railway signs in to the app from private runtime
+variables on every run and keeps only the Garmin session on its volume. Setup is
+in [the Railway runbook](docs/integrations/RAILWAY.md).
