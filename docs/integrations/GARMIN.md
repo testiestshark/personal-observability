@@ -15,12 +15,12 @@ that ingestion be automatic.
 
 ## Scope
 
-The current slice ingests steps, active calories, and total calories. Active
-calories are movement energy; total calories also include resting metabolism.
-The provider boundary and table can later be extended with sleep, resting heart
-rate, HRV, distance, stress, and Body Battery after their Garmin field semantics
-have been validated. Discrete
-activities remain Strava's responsibility to avoid duplicate workouts.
+The current slice ingests steps, active calories, total calories, sleep start/end,
+total sleep, sleep score, resting heart rate, VO2 max, Garmin's source-sync time,
+and recorded fitness activities. Active calories are movement energy; total
+calories also include resting metabolism. Garmin activities retain useful summary
+fields but deliberately omit route coordinates. Detailed gym exercises and sets
+belong to the separate Hevy integration.
 
 The worker fetches the latest seven days on every run. This intentionally
 revisits recent dates so a late watch sync or Garmin correction overwrites the
@@ -81,11 +81,13 @@ the next seven-day fetch.
 
 ## Canonical record
 
-`public.daily_health_metrics` owns the normalized history. A Garmin daily row
+`public.daily_health_metrics` owns normalized daily history, while
+`public.fitness_activities` owns discrete Garmin and future Hevy activity records.
+A Garmin daily row
 retains:
 
 - the owning `user_id` and Garmin calendar `day`;
-- canonical `steps`, `active_calories_kcal`, and `total_calories_kcal` values;
+- canonical steps, calories, sleep, resting-heart-rate, and VO2-max values;
 - `source = garmin`;
 - `provider = garmin_connect_unofficial`;
 - a deterministic external identifier and the latest sync timestamp.
@@ -102,9 +104,9 @@ inside Lovable:
 Garmin Watch -> Garmin Connect -> local Docker worker -> hosted Supabase -> published app
 ```
 
-The worker remains on the owner's Windows computer, where its Garmin bearer tokens
-already live. It signs in separately to the hosted Personal Observability account
-and writes to hosted Supabase as that user, so the existing RLS ownership checks
+The production worker runs as a private Railway cron service with bearer tokens on
+its persistent volume. A local Windows worker remains available for development and
+recovery. Both sign in to Supabase as the app user, so existing RLS ownership checks
 remain in force. The published frontend never receives Garmin credentials or tokens.
 
 This design avoids both a paid health-data intermediary and a public server holding

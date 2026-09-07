@@ -8,9 +8,11 @@ from garmin_sync import (
     app_environment,
     current_london_day,
     docker_host_url,
+    normalize_activities,
     normalize_daily_health,
     normalize_steps,
     validate_railway_volume,
+    _vo2_max,
 )
 
 
@@ -110,6 +112,88 @@ class NormalizeDailyHealthTests(unittest.TestCase):
     def test_skips_a_day_with_no_valid_measurements(self) -> None:
         rows = normalize_daily_health(
             [{"calendarDate": "2026-09-06", "totalSteps": True, "totalKilocalories": -1}],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_adds_the_agreed_sleep_heart_and_vo2_fields(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-06", "restingHeartRate": 52}],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+            sleep_by_day={
+                "2026-09-06": {
+                    "dailySleepDTO": {
+                        "sleepStartTimestampGMT": 1788649200000,
+                        "sleepEndTimestampGMT": 1788678000000,
+                        "sleepTimeSeconds": 27000,
+                        "sleepScores": {"overall": {"value": 84}},
+                    }
+                }
+            },
+            max_metrics_by_day={
+                "2026-09-06": [{"generic": {"vo2MaxValue": 51.0}}]
+            },
+        )
+
+        self.assertEqual(rows[0]["resting_heart_rate_bpm"], 52)
+        self.assertEqual(rows[0]["total_sleep_seconds"], 27000)
+        self.assertEqual(rows[0]["sleep_score"], 84)
+        self.assertEqual(rows[0]["vo2_max"], 51.0)
+        self.assertTrue(rows[0]["sleep_start_at"].endswith("+00:00"))
+        self.assertTrue(rows[0]["sleep_end_at"].endswith("+00:00"))
+
+    def test_extracts_most_recent_vo2_between_calculation_days(self) -> None:
+        self.assertEqual(
+            _vo2_max(
+                {
+                    "mostRecentVO2Max": {
+                        "generic": {"vo2MaxValue": 50.0},
+                        "cycling": None,
+                    }
+                }
+            ),
+            50.0,
+        )
+
+
+class NormalizeActivitiesTests(unittest.TestCase):
+    def test_normalizes_activity_summary_without_coordinates(self) -> None:
+        rows = normalize_activities(
+            [
+                {
+                    "activityId": 12345,
+                    "activityName": "Morning Run",
+                    "activityType": {"typeKey": "running"},
+                    "startTimeLocal": "2026-09-06 07:30:00",
+                    "startTimeGMT": "2026-09-06 06:30:00",
+                    "duration": 1800.5,
+                    "distance": 5020.2,
+                    "calories": 401.2,
+                    "averageHR": 151,
+                    "startLatitude": 51.5,
+                    "startLongitude": -0.1,
+                }
+            ],
+            "user-1",
+            "2026-09-06T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows[0]["external_id"], "12345")
+        self.assertEqual(rows[0]["activity_type"], "running")
+        self.assertEqual(rows[0]["local_day"], "2026-09-06")
+        self.assertEqual(rows[0]["distance_meters"], 5020.2)
+        self.assertNotIn("startLatitude", rows[0])
+        self.assertNotIn("startLongitude", rows[0])
+
+    def test_skips_activity_without_stable_id_or_start_time(self) -> None:
+        rows = normalize_activities(
+            [
+                {"activityName": "No id", "startTimeGMT": "2026-09-06 06:30:00"},
+                {"activityId": 12345, "activityName": "No time"},
+            ],
             "user-1",
             "2026-09-06T12:00:00+00:00",
         )

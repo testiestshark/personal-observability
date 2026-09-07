@@ -9,8 +9,8 @@ A single-user dashboard that brings together data that's normally scattered acro
 ## Data domains
 
 - GitHub activity, across two accounts
-- Strava fitness activities
-- Daily steps and calorie burn (Garmin sync implemented for local and hosted data)
+- Garmin fitness activities, daily health, sleep, resting heart rate, and VO2 max
+- Hevy strength workouts and set-level exercise history
 - Weight (implemented locally)
 - Computer activity
 - Manually recorded iPhone Screen Time
@@ -21,7 +21,7 @@ A single-user dashboard that brings together data that's normally scattered acro
 ## Current stage
 
 The application shell and authentication are implemented. Weight is wired
-end-to-end, and Garmin daily health sync is operational against the hosted data;
+end-to-end, and Garmin health/activity sync is operational against the hosted data;
 cloud scheduling is ready for Railway account setup. See [ROADMAP.md](ROADMAP.md)
 for the exact status.
 

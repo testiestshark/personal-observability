@@ -108,8 +108,207 @@ def _whole_non_negative(value: Any) -> int | None:
     return round(value)
 
 
-def normalize_daily_health(
+def _number_non_negative(value: Any) -> float | None:
+    """Return a finite non-negative provider number, or None when invalid."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return None
+    if value != value or value in {float("inf"), float("-inf")}:
+        return None
+    return float(value)
+
+
+def _provider_utc_timestamp(value: Any) -> str | None:
+    """Normalize Garmin GMT timestamps, which vary between epoch-ms and text."""
+    instant: datetime
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        seconds = value / 1000 if value > 10_000_000_000 else value
+        try:
+            instant = datetime.fromtimestamp(seconds, tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    elif isinstance(value, str):
+        candidate = value.strip().replace(" ", "T")
+        if not candidate:
+            return None
+        if candidate.endswith("Z"):
+            candidate = candidate[:-1] + "+00:00"
+        try:
+            instant = datetime.fromisoformat(candidate)
+        except ValueError:
+            return None
+        if instant.tzinfo is None:
+            instant = instant.replace(tzinfo=timezone.utc)
+        else:
+            instant = instant.astimezone(timezone.utc)
+    else:
+        return None
+    return instant.isoformat()
+
+
+def _sleep_fields(payload: Any) -> dict[str, Any]:
+    """Extract only the agreed nightly sleep summary from Garmin's response."""
+    if not isinstance(payload, dict):
+        return {}
+    sleep = payload.get("dailySleepDTO")
+    if not isinstance(sleep, dict):
+        return {}
+
+    scores = sleep.get("sleepScores")
+    score: Any = None
+    if isinstance(scores, dict):
+        overall = scores.get("overall")
+        score = overall.get("value") if isinstance(overall, dict) else None
+        if score is None:
+            score = scores.get("overallScore")
+    if score is None:
+        score = sleep.get("sleepScore")
+    normalized_score = _whole_non_negative(score)
+    if normalized_score is not None and normalized_score > 100:
+        normalized_score = None
+
+    return {
+        "sleep_start_at": _provider_utc_timestamp(
+            sleep.get("sleepStartTimestampGMT")
+        ),
+        "sleep_end_at": _provider_utc_timestamp(sleep.get("sleepEndTimestampGMT")),
+        "total_sleep_seconds": _whole_non_negative(sleep.get("sleepTimeSeconds")),
+        "sleep_score": normalized_score,
+    }
+
+
+def _vo2_max(payload: Any) -> float | None:
+    """Extract Garmin's running VO2 max, accepting its list/object variants."""
+    if isinstance(payload, list):
+        for entry in payload:
+            value = _vo2_max(entry)
+            if value is not None:
+                return value
+        return None
+    candidate = payload
+    if not isinstance(candidate, dict):
+        return None
+
+    most_recent = candidate.get("mostRecentVO2Max")
+    if most_recent is not None:
+        value = _vo2_max(most_recent)
+        if value is not None:
+            return value
+
+    generic = candidate.get("generic")
+    if isinstance(generic, dict):
+        value = generic.get("vo2MaxValue")
+        if value is None:
+            value = generic.get("vo2MaxPreciseValue")
+    else:
+        value = candidate.get("vo2MaxValue")
+        if value is None:
+            value = candidate.get("vo2MaxPreciseValue")
+    normalized = _number_non_negative(value)
+    return normalized if normalized and normalized > 0 else None
+
+
+def _text(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def normalize_activities(
     rows: Any, user_id: str, synced_at: str
+) -> list[dict[str, Any]]:
+    """Translate Garmin activity summaries without retaining route coordinates."""
+    if not isinstance(rows, list):
+        raise SyncError("Garmin returned an unexpected activities response.")
+
+    normalized_by_id: dict[str, dict[str, Any]] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        activity_id = item.get("activityId")
+        if isinstance(activity_id, bool) or not isinstance(activity_id, (int, str)):
+            continue
+        external_id = str(activity_id).strip()
+        if not external_id:
+            continue
+
+        started_at = _provider_utc_timestamp(item.get("startTimeGMT"))
+        if not started_at:
+            continue
+        local_start = _text(item.get("startTimeLocal"))
+        local_day = local_start[:10] if local_start else started_at[:10]
+        try:
+            date.fromisoformat(local_day)
+        except ValueError:
+            continue
+
+        activity_type = item.get("activityType")
+        if not isinstance(activity_type, dict):
+            activity_type = item.get("activityTypeDTO")
+        type_key = (
+            _text(activity_type.get("typeKey"))
+            if isinstance(activity_type, dict)
+            else None
+        )
+        if not type_key:
+            type_key = "other"
+
+        normalized_by_id[external_id] = {
+            "user_id": user_id,
+            "source": SOURCE,
+            "provider": PROVIDER,
+            "external_id": external_id,
+            "activity_name": _text(item.get("activityName")),
+            "activity_type": type_key,
+            "local_day": local_day,
+            "started_at": started_at,
+            "duration_seconds": _number_non_negative(item.get("duration")),
+            "moving_duration_seconds": _number_non_negative(
+                item.get("movingDuration")
+            ),
+            "elapsed_duration_seconds": _number_non_negative(
+                item.get("elapsedDuration")
+            ),
+            "distance_meters": _number_non_negative(item.get("distance")),
+            "calories_kcal": _whole_non_negative(item.get("calories")),
+            "average_heart_rate_bpm": _whole_non_negative(item.get("averageHR")),
+            "maximum_heart_rate_bpm": _whole_non_negative(item.get("maxHR")),
+            "elevation_gain_meters": _number_non_negative(item.get("elevationGain")),
+            "elevation_loss_meters": _number_non_negative(item.get("elevationLoss")),
+            "average_speed_mps": _number_non_negative(item.get("averageSpeed")),
+            "maximum_speed_mps": _number_non_negative(item.get("maxSpeed")),
+            "average_cadence_spm": _number_non_negative(
+                item.get("averageRunningCadenceInStepsPerMinute")
+            ),
+            "maximum_cadence_spm": _number_non_negative(
+                item.get("maxRunningCadenceInStepsPerMinute")
+            ),
+            "average_power_watts": _number_non_negative(item.get("avgPower")),
+            "maximum_power_watts": _number_non_negative(item.get("maxPower")),
+            "normalized_power_watts": _number_non_negative(item.get("normPower")),
+            "aerobic_training_effect": _number_non_negative(
+                item.get("aerobicTrainingEffect")
+            ),
+            "anaerobic_training_effect": _number_non_negative(
+                item.get("anaerobicTrainingEffect")
+            ),
+            "training_load": _number_non_negative(item.get("activityTrainingLoad")),
+            "training_effect_label": _text(item.get("trainingEffectLabel")),
+            "total_sets": _whole_non_negative(item.get("totalSets")),
+            "active_sets": _whole_non_negative(item.get("activeSets")),
+            "total_reps": _whole_non_negative(item.get("totalReps")),
+            "total_volume_kg": _number_non_negative(item.get("totalVolume")),
+            "synced_at": synced_at,
+        }
+
+    return sorted(normalized_by_id.values(), key=lambda row: row["started_at"])
+
+
+def normalize_daily_health(
+    rows: Any,
+    user_id: str,
+    synced_at: str,
+    sleep_by_day: dict[str, Any] | None = None,
+    max_metrics_by_day: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Translate Garmin daily summaries into the product's canonical fields.
 
@@ -136,7 +335,19 @@ def normalize_daily_health(
         steps = _whole_non_negative(item.get("totalSteps", item.get("steps")))
         active_calories = _whole_non_negative(item.get("activeKilocalories"))
         total_calories = _whole_non_negative(item.get("totalKilocalories"))
-        if steps is None and active_calories is None and total_calories is None:
+        resting_heart_rate = _whole_non_negative(item.get("restingHeartRate"))
+        if resting_heart_rate is not None and not 1 <= resting_heart_rate <= 300:
+            resting_heart_rate = None
+        sleep = _sleep_fields((sleep_by_day or {}).get(day))
+        vo2_max = _vo2_max((max_metrics_by_day or {}).get(day))
+        if (
+            steps is None
+            and active_calories is None
+            and total_calories is None
+            and resting_heart_rate is None
+            and not sleep
+            and vo2_max is None
+        ):
             continue
 
         normalized_by_day[day] = {
@@ -145,6 +356,12 @@ def normalize_daily_health(
             "steps": steps,
             "active_calories_kcal": active_calories,
             "total_calories_kcal": total_calories,
+            "resting_heart_rate_bpm": resting_heart_rate,
+            "vo2_max": vo2_max,
+            "source_synced_at": _provider_utc_timestamp(
+                item.get("lastSyncTimestampGMT")
+            ),
+            **sleep,
             "source": SOURCE,
             "provider": PROVIDER,
             "external_id": f"garmin:{day}",
@@ -276,6 +493,23 @@ class SupabaseSession:
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
+    def upsert_activities(
+        self, rows: list[dict[str, Any]], session: dict[str, Any]
+    ) -> None:
+        if not rows:
+            return
+        access_token = session.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise SyncError("The cached app access token is missing. Run setup again.")
+        self._request(
+            "POST",
+            "/rest/v1/fitness_activities?"
+            + urlencode({"on_conflict": "user_id,source,external_id"}),
+            rows,
+            access_token=access_token,
+            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+
 
 def configuration() -> tuple[SupabaseSession, Path]:
     raw_url = os.getenv("SUPABASE_URL")
@@ -357,23 +591,67 @@ def sync(days: int) -> None:
     end = current_london_day()
     start = end - timedelta(days=days - 1)
     raw_rows = []
+    sleep_by_day: dict[str, Any] = {}
+    max_metrics_by_day: dict[str, Any] = {}
     for offset in range(days):
         requested_day = (start + timedelta(days=offset)).isoformat()
         summary = garmin.get_stats(requested_day)
         if isinstance(summary, dict) and not summary.get("calendarDate"):
             summary = {**summary, "calendarDate": requested_day}
         raw_rows.append(summary)
+        try:
+            sleep_by_day[requested_day] = garmin.get_sleep_data(requested_day)
+        except Exception as error:
+            print(
+                f"Warning: Garmin sleep was unavailable for {requested_day}: {error}",
+                file=sys.stderr,
+            )
+        try:
+            max_metrics_by_day[requested_day] = garmin.get_max_metrics(requested_day)
+        except Exception as error:
+            print(
+                f"Warning: Garmin VO2 max was unavailable for {requested_day}: {error}",
+                file=sys.stderr,
+            )
+
+    end_day = end.isoformat()
+    if _vo2_max(max_metrics_by_day.get(end_day)) is None:
+        try:
+            max_metrics_by_day[end_day] = garmin.get_training_status(end_day)
+        except Exception as error:
+            print(
+                f"Warning: Garmin's latest VO2 max was unavailable: {error}",
+                file=sys.stderr,
+            )
+
+    try:
+        raw_activities = garmin.get_activities_by_date(
+            start.isoformat(), end.isoformat(), sortorder="asc"
+        )
+    except Exception as error:
+        print(f"Warning: Garmin activities were unavailable: {error}", file=sys.stderr)
+        raw_activities = []
+
     synced_at = datetime.now(timezone.utc).isoformat()
-    rows = normalize_daily_health(raw_rows, user_id, synced_at)
+    rows = normalize_daily_health(
+        raw_rows,
+        user_id,
+        synced_at,
+        sleep_by_day=sleep_by_day,
+        max_metrics_by_day=max_metrics_by_day,
+    )
+    activities = normalize_activities(raw_activities, user_id, synced_at)
     if not rows:
         raise SyncError(
             "Garmin returned no usable daily-health records for the requested range."
         )
 
     supabase.upsert(rows, session)
+    supabase.upsert_activities(activities, session)
     print(
         f"Synced {len(rows)} Garmin health day(s), "
-        f"{rows[0]['day']} to {rows[-1]['day']}."
+        f"{rows[0]['day']} to {rows[-1]['day']}, "
+        f"plus {len(activities)} recorded activity/activities."
     )
 
 
@@ -405,7 +683,7 @@ def main() -> int:
         "setup-app", help="Authenticate only to the app while reusing cached Garmin tokens."
     )
     sync_parser = subcommands.add_parser(
-        "sync", help="Fetch and upsert recent daily health totals."
+        "sync", help="Fetch and upsert recent health and recorded activities."
     )
     sync_parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
     subcommands.add_parser("status", help="Check whether both cached sessions exist.")

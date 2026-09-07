@@ -133,7 +133,7 @@ Two separate concerns:
 
 **Evaluation:** a generic `integration_connections` table (provider-agnostic, `provider` discriminator + JSONB payload) vs. a GitHub-specific `github_installations` table vs. both.
 
-**Recommendation: a single GitHub-specific `github_installations` table, not a generic table yet.** Only one provider exists today; a generic table would mean designing a provider-agnostic shape from a sample size of one, and this repo's stated conventions favor not building abstractions before a second concrete case exists. The columns below are still deliberately narrow and additive, so introducing a generic `integration_connections` table later (once Strava etc. exist) is a normal follow-up migration, not a rewrite.
+**Recommendation: a single GitHub-specific `github_installations` table, not a generic table yet.** Only one provider exists today; a generic table would mean designing a provider-agnostic shape from a sample size of one, and this repo's stated conventions favor not building abstractions before a second concrete case exists. The columns below are still deliberately narrow and additive, so introducing a generic `integration_connections` table later (once Hevy etc. exist) is a normal follow-up migration, not a rewrite.
 
 `github_installations`:
 

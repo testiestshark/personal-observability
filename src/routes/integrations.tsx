@@ -39,9 +39,9 @@ function Integrations() {
           <div className="mt-2">
             <PlaceholderRow label="GitHub — account one" value="Not connected" />
             <PlaceholderRow label="GitHub — account two" value="Not connected" />
-            <PlaceholderRow label="Strava" value="Not connected" />
+            <PlaceholderRow label="Hevy workouts" value="Setup required" />
             <PlaceholderRow
-              label="Garmin daily health"
+              label="Garmin health & activities"
               value={
                 garmin ? `Last synced ${formatSyncTime(garmin.lastSyncedAt)}` : "Setup required"
               }
@@ -56,7 +56,7 @@ function Integrations() {
           label="Garmin sync"
           note={
             garmin
-              ? `Automatic sync is active; latest Garmin day is ${garmin.latestDay}.`
+              ? `Automatic health and activity sync is active; latest Garmin day is ${garmin.latestDay}.`
               : "Run the one-time Garmin setup, then install the hourly scheduled task."
           }
           height="h-20"

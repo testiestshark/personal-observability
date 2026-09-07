@@ -6,7 +6,7 @@ The product will eventually collect and analyse one person’s:
 
 GitHub activity from two accounts
 
-Strava fitness activities
+Garmin fitness activities and Hevy strength workouts
 
 Daily steps
 
@@ -116,8 +116,8 @@ bunx supabase stop # stop the local Supabase stack
 
 ## Automatic Garmin health sync
 
-Garmin steps and calorie totals can sync directly from Garmin Connect into Supabase
-database without Terra or manual exports. Build the worker, complete the one-time
+Garmin daily health and recorded activities can sync directly from Garmin Connect
+into Supabase without Terra, Strava, or manual exports. Build the worker, complete the one-time
 interactive login, test a sync, then install the hourly Windows task:
 
 ```powershell

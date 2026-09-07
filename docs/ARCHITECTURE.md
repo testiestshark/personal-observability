@@ -6,7 +6,7 @@ TanStack Start (React 19 + Vite, SSR via Nitro) on the frontend, Supabase (Postg
 
 ## Integration architecture
 
-**Status: Garmin daily health implemented; other providers planned**
+**Status: Garmin health and activities implemented; Hevy and GitHub planned**
 
 Personal Observability will aggregate records from provider-specific integration
 boundaries into its own database:
@@ -15,21 +15,19 @@ boundaries into its own database:
                      Personal Observability
                             Database
                                ^
-             +-----------------+-----------------+
-             |                 |                 |
-      Garmin bridge          Strava            GitHub
-             ^                 ^                 ^
-           Garmin         Hevy / Garmin        GitHub
-             |
-        health/wellness
+                   +-----------+-----------+
+                   |           |           |
+             Garmin bridge   Hevy API    GitHub
+                   ^           ^           ^
+                 Garmin      Hevy app    GitHub
 ```
 
 The intended responsibilities are:
 
-- **Garmin bridge:** daily health and wellness data from Garmin Connect, runnable
-  locally or as an outbound-only Railway cron worker.
-- **Strava:** discrete fitness and activity data.
-- **Hevy:** strength-training logging, synced into Strava.
+- **Garmin bridge:** daily health, recovery metrics, and recorded Garmin fitness
+  activities, runnable locally or as an outbound-only Railway cron worker.
+- **Hevy:** detailed strength workouts, exercises, sets, repetitions, and weight,
+  read directly from Hevy's public API.
 - **GitHub:** development and productivity activity.
 - **Personal Observability database:** canonical aggregation layer and long-term
   source of truth.
@@ -44,16 +42,14 @@ one provider can be replaced without changing unrelated product code. In
 particular, the unofficial Garmin adapter may later be replaced by Garmin's
 official API or a different health provider.
 
-Garmin workouts may reach Strava while Garmin wellness data reaches the local
-bridge. The system must not blindly create two copies of the same activity: the
-bridge is initially responsible for health/wellness records and Strava for
-activities.
-Future activity deduplication should prefer external IDs and provenance, with
-timestamps, activity type, and duration as additional signals.
+Garmin owns its recorded fitness activities; Hevy owns detailed strength-workout
+records. If the same gym session exists in both, source-specific external IDs keep
+both records traceable and a future presentation layer may correlate them by start
+time and duration without destroying either source record.
 
 Detailed planned designs:
 
-- [Hevy to Strava activity integration](integrations/HEVY_STRAVA.md)
+- [Direct Hevy activity integration](integrations/HEVY.md)
 - [Garmin health and wellness integration](integrations/GARMIN.md)
 - [Railway-hosted Garmin sync](integrations/RAILWAY.md)
 - [GitHub integration](integrations/GITHUB.md)

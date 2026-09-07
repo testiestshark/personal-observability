@@ -1,6 +1,6 @@
 # Railway-hosted Garmin sync
 
-**Status: repository support complete; Railway account setup and first run pending**
+**Status: Operational in Railway production since 2026-09-06**
 
 Railway can run the Garmin worker as a private hourly cron job, so syncing no
 longer depends on this computer or Docker Desktop being awake:
@@ -57,16 +57,16 @@ automatic redeployment from `main`; it is not required for scheduled execution.
 
 ## Verify and cut over
 
-Deploy or manually trigger the Railway cron service. A successful log ends with
+After a deployment, manually trigger or observe the Railway cron service. A successful log ends with
 text like:
 
 ```text
 Synced 7 Garmin health day(s), 2026-08-31 to 2026-09-06.
 ```
 
-Check that today's steps and calories update in the published app. Let at least
-one scheduled run complete before disabling the Windows task. Keeping both for
-a short verification period is safe because database writes are idempotent.
+Check that today's health and recorded activities update in the published app.
+The old Windows live task is no longer required; Railway owns the production
+schedule. Database writes are idempotent if a manual verification run overlaps.
 
 If Railway reports a missing app session or Garmin session, rerun the upload
 helper. If Garmin revokes its tokens, run the existing local interactive setup
@@ -83,7 +83,7 @@ paths are underneath it before contacting either provider.
 ## Future jobs on Railway
 
 The same project can host other small ingestion services later—for example
-GitHub contribution ingestion, Strava polling/webhooks, scheduled aggregation,
+GitHub contribution ingestion, Hevy workout polling, scheduled aggregation,
 data-quality checks, and notification workers. Give each integration its own
 service, least-privilege credentials, schedule, and volume only where persistent
 state is actually required. The main web app can remain hosted separately.
