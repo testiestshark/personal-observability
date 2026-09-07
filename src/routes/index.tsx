@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Activity, ChevronLeft, ChevronRight, Clock3, Flame, Footprints, HeartPulse, Moon, Sparkles } from "lucide-react";
 import type { ComponentType } from "react";
 import { z } from "zod";
@@ -37,9 +37,9 @@ export const Route = createFileRoute("/")({
     ],
   }),
   validateSearch: z.object({
-    day: daySchema.optional().default(currentLondonDay()),
+    day: daySchema.optional(),
   }).parse,
-  loaderDeps: ({ search: { day } }) => ({ day }),
+  loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
   loader: async ({ deps: { day } }) => {
     const [health, activities] = await Promise.all([
       getDailyHealth({ data: { day } }),
@@ -51,9 +51,7 @@ export const Route = createFileRoute("/")({
 });
 
 function Today() {
-  const { health, activities, day } = Route.useLoaderData();
-  const search = useSearch({ from: "/" });
-  const viewedDay = search.day ?? day;
+  const { health, activities, day: viewedDay } = Route.useLoaderData();
   const isToday = viewedDay === currentLondonDay();
   const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
   const metrics = [
