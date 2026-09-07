@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Activity, Clock3, Flame, Footprints, HeartPulse, Moon, Sparkles } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Activity, ChevronLeft, ChevronRight, Clock3, Flame, Footprints, HeartPulse, Moon, Sparkles } from "lucide-react";
 import type { ComponentType } from "react";
+import { z } from "zod";
 
 import { PageHeader, Placeholder } from "@/components/app-shell";
 import {
@@ -15,7 +16,9 @@ import {
   formatVo2Max,
 } from "@/lib/health/format";
 import { getDailyHealth, getFitnessActivitiesForDay } from "@/lib/health/health.functions";
-import { currentLondonDay } from "@/lib/weight/units";
+import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
+
+const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -33,25 +36,29 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
-  loader: async () => {
-    const day = currentLondonDay();
+  validateSearch: z.object({
+    day: daySchema.optional(),
+  }).parse,
+  loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
+  loader: async ({ deps: { day } }) => {
     const [health, activities] = await Promise.all([
       getDailyHealth({ data: { day } }),
       getFitnessActivitiesForDay({ data: { day } }),
     ]);
-    return { health, activities };
+    return { day, health, activities };
   },
   component: Today,
 });
 
 function Today() {
-  const { health, activities } = Route.useLoaderData();
+  const { health, activities, day: viewedDay } = Route.useLoaderData();
+  const isToday = viewedDay === currentLondonDay();
   const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
   const metrics = [
     {
       label: "Steps",
       value: health?.steps?.toLocaleString("en-GB") ?? "—",
-      note: "Today",
+      note: isToday ? "Today" : formatDayLabel(viewedDay),
       icon: Footprints,
     },
     {
@@ -95,10 +102,12 @@ function Today() {
   return (
     <>
       <PageHeader
-        eyebrow="Today"
+        eyebrow={isToday ? "Today" : formatDayLabel(viewedDay)}
         title="Your day at a glance"
         subtitle="Health and activity from Garmin Connect, refreshed automatically."
       />
+
+      <DayNavigator day={viewedDay} isToday={isToday} />
 
       <div className="grid gap-5">
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
@@ -123,7 +132,7 @@ function Today() {
               ))}
             </div>
           ) : (
-            <EmptyState>No Garmin health data has arrived for today yet.</EmptyState>
+            <EmptyState>No Garmin health data has arrived for this day yet.</EmptyState>
           )}
         </section>
 
@@ -132,7 +141,7 @@ function Today() {
             <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
               Garmin activities
             </p>
-            <h2 className="mt-1 font-display text-xl text-foreground">Recorded today</h2>
+            <h2 className="mt-1 font-display text-xl text-foreground">Recorded on this day</h2>
           </div>
 
           {activities.length ? (
@@ -160,7 +169,7 @@ function Today() {
               ))}
             </div>
           ) : (
-            <EmptyState>No recorded Garmin activities today.</EmptyState>
+            <EmptyState>No recorded Garmin activities on this day.</EmptyState>
           )}
         </section>
 
@@ -169,6 +178,44 @@ function Today() {
         <Placeholder label="Attention" note="Computer activity and iPhone Screen Time." />
       </div>
     </>
+  );
+}
+
+function DayNavigator({ day, isToday }: { day: string; isToday: boolean }) {
+  const previousDay = shiftDay(day, -1);
+  const nextDay = shiftDay(day, 1);
+
+  return (
+    <div className="mb-5 flex items-center justify-between rounded-xl border border-border bg-card p-2">
+      <Link
+        to="/"
+        search={{ day: previousDay }}
+        aria-label="Previous day"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </Link>
+      <span className="text-sm font-medium text-foreground">
+        {isToday ? "Today" : formatDayLabel(day)}
+      </span>
+      {isToday ? (
+        <span
+          aria-label="Next day"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground opacity-40"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </span>
+      ) : (
+        <Link
+          to="/"
+          search={{ day: nextDay }}
+          aria-label="Next day"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Link>
+      )}
+    </div>
   );
 }
 
