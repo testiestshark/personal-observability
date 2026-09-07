@@ -135,7 +135,11 @@ export function formatEntryDay(isoTimestamp: string): string {
  * noUncheckedIndexedAccess, so every caller would otherwise repeat the same
  * narrowing. Callers pass keys already validated against DAY_PATTERN.
  */
-export function parseDayKey(day: string): { year: number; monthNumber: number; dayOfMonth: number } {
+export function parseDayKey(day: string): {
+  year: number;
+  monthNumber: number;
+  dayOfMonth: number;
+} {
   const [year, monthNumber, dayOfMonth] = day.split("-");
   return { year: Number(year), monthNumber: Number(monthNumber), dayOfMonth: Number(dayOfMonth) };
 }

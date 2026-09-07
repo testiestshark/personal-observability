@@ -1,5 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Activity, ChevronLeft, ChevronRight, Clock3, Flame, Footprints, HeartPulse, Moon, Sparkles } from "lucide-react";
+import {
+  Activity,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  Flame,
+  Footprints,
+  HeartPulse,
+  Moon,
+  Sparkles,
+} from "lucide-react";
 import type { ComponentType } from "react";
 import { z } from "zod";
 
