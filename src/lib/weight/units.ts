@@ -129,6 +129,18 @@ export function formatEntryDay(isoTimestamp: string): string {
 }
 
 /**
+ * Split a "YYYY-MM-DD" key into numbers.
+ *
+ * Destructuring `split("-")` directly gives `string | undefined` under
+ * noUncheckedIndexedAccess, so every caller would otherwise repeat the same
+ * narrowing. Callers pass keys already validated against DAY_PATTERN.
+ */
+export function parseDayKey(day: string): { year: number; monthNumber: number; dayOfMonth: number } {
+  const [year, monthNumber, dayOfMonth] = day.split("-");
+  return { year: Number(year), monthNumber: Number(monthNumber), dayOfMonth: Number(dayOfMonth) };
+}
+
+/**
  * Split a "YYYY-MM" key into numbers.
  *
  * Destructuring `split("-")` directly gives `string | undefined` under
@@ -159,4 +171,14 @@ export function shiftMonth(month: string, delta: number): string {
   const { year, monthNumber } = parseMonthKey(month);
   const shifted = new Date(Date.UTC(year, monthNumber - 1 + delta, 1));
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Step a "YYYY-MM-DD" day key by whole days. */
+export function shiftDay(day: string, delta: number): string {
+  const { year, monthNumber, dayOfMonth } = parseDayKey(day);
+  const shifted = new Date(Date.UTC(year, monthNumber - 1, dayOfMonth + delta));
+  const y = shifted.getUTCFullYear();
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
