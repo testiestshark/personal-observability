@@ -1,47 +1,7 @@
-# Backlog
+# Deliberate non-goals
 
-**This is the list of what needs doing.** When there is no specific instruction about
-what to work on, the next item here is the answer.
-
-Last reviewed: 2026-09-06.
-
-## How this file works
-
-- **[ROADMAP.md](ROADMAP.md) is the coarse view** — milestones, and which data domains
-  exist at all. This file is the concrete one: things small enough to actually pick up
-  and finish.
-- **Priority means "what breaks if this waits".** High is correctness, security or
-  something actively misleading. Medium is real work with no bleeding. Low is tidying.
-- **Items are removed when done**, not ticked off — git history is the record of what was
-  completed, and a file of struck-through lines stops being readable.
-- **Add the reasoning, not just the task.** An item nobody understands in three months
-  gets skipped forever. Where a finding came from a specific commit or file, link it.
-- **Deliberate non-goals live at the bottom**, so a decision already made does not get
-  re-litigated as though it were an oversight.
-
----
-
-## High
-
-_Nothing outstanding._
-
----
-
-## Medium
-
-_Nothing outstanding._
-
----
-
-## Low
-
-_Nothing outstanding._
-
----
-
-## Deliberate non-goals
-
-Recorded so they are not raised again as gaps.
+Decisions _not_ to do something, recorded with the date and the reason so they are not
+raised again as oversights. Outstanding work lives in GitHub issues.
 
 - **Removing the signup code now that signup is closed.** Decided on 2026-08-19.
   Public signup is off in two places — `VITE_ALLOW_SIGNUP` defaults to closed (see

@@ -8,32 +8,30 @@ Personal Observability — a private, single-user web app for tracking personal 
 
 ## What to work on
 
-**[docs/backlog.md](docs/backlog.md) is the source of truth for outstanding work.** When
-you are asked to do something specific, do that. When you are not — "what's next?", "pick
-something up", or any open-ended request — read the backlog and take the highest-priority
-item, rather than inventing work or guessing from the code.
+**Open GitHub issues are the source of truth for outstanding work.** When you are asked to
+do something specific, do that. When you are not — "what's next?", "pick something up", or
+any open-ended request — list the open issues and take a `ready-for-agent` one, rather than
+inventing work or guessing from the code. A `needs-triage` issue waits on a decision from
+the owner; it is not ready to build.
 
-Keep it current as part of the job, not as a separate chore:
+Keep the issues current as part of the job, not as a separate chore:
 
-- Finished an item? **Delete it** from the backlog in the same commit as the work. Git
-  history is the record of what was done; a file of struck-through lines stops being read.
-- Found a problem you are not fixing right now? Add it, with the reasoning and a link to
-  the file or commit it came from. A finding that only exists in a chat transcript is lost.
-- Decided _not_ to do something? Put it under "Deliberate non-goals" with the date and the
-  why, so it is not raised again later as an oversight.
+- Finished an issue? Close it from the PR that does the work (`Closes #<n>`).
+- Found a problem you are not fixing right now? Open an issue labelled `needs-triage`,
+  with the reasoning and a link to the file or commit it came from. A finding that only
+  exists in a chat transcript is lost.
+- Decided _not_ to do something? Record it in [docs/NON_GOALS.md](docs/NON_GOALS.md) with
+  the date and the why, so it is not raised again later as an oversight.
 
 [docs/ROADMAP.md](docs/ROADMAP.md) stays coarse — milestones and data domains. Concrete,
-pick-up-able tasks belong in the backlog.
+pick-up-able tasks belong in issues.
 
 ## Agent skills
 
 ### Issue tracker
 
-GitHub Issues (`testiestshark/personal-observability`, via `gh`). `docs/backlog.md` remains
-the source of truth for what to work on next; issues hold the specs and tickets for work
-in flight, and a backlog item is deleted once it is promoted to issues. Check
-`gh auth status` first: the repo needs the `testiestshark` account. See
-`docs/agents/issue-tracker.md`.
+GitHub Issues (`testiestshark/personal-observability`, via `gh`). Check `gh auth status`
+first: the repo needs the `testiestshark` account. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

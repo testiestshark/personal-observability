@@ -352,7 +352,7 @@ It is a better version of manual entry, not an integration.
 
 ## Recommendation
 
-1. **Keep manual entry as the baseline.** Do not add a backlog item for automatic
+1. **Keep manual entry as the baseline.** Do not open a build issue for automatic
    collection until the spike below passes.
 2. **If automatic collection is wanted, spike Route 1b first. Budget one weekend on a Mac.**
    Build a throwaway app with individual authorization and the App-and-Website-Usage

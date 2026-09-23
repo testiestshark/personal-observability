@@ -3,8 +3,8 @@
 Speculative, not scheduled. This is a holding pen for ideas that only become
 possible _because_ the data domains in [PRODUCT.md](PRODUCT.md) end up
 collected in one place — not committed work, and not sequenced. When an idea
-here is ready to become real work, it graduates to [ROADMAP.md](ROADMAP.md) /
-[backlog.md](backlog.md) and gets removed from this list.
+here is ready to become real work, it graduates to [ROADMAP.md](ROADMAP.md) or
+a GitHub issue and gets removed from this list.
 
 ## Dynamic LinkedIn bio / monthly "what I've been up to"
 
