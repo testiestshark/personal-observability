@@ -29,13 +29,15 @@ pick-up-able tasks belong in the backlog.
 
 ### Issue tracker
 
-Local markdown under `.scratch/<feature>/`. `docs/backlog.md` remains the source of truth for
-what to work on next; `.scratch/` holds the specs and tickets for a piece of work in flight,
-and finished ones are deleted, as with backlog items. See `docs/agents/issue-tracker.md`.
+GitHub Issues (`testiestshark/personal-observability`, via `gh`). `docs/backlog.md` remains
+the source of truth for what to work on next; issues hold the specs and tickets for work
+in flight, and a backlog item is deleted once it is promoted to issues. Check
+`gh auth status` first: the repo needs the `testiestshark` account. See
+`docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default five-role vocabulary, recorded as a `Status:` line in each ticket. See `docs/agents/triage-labels.md`.
+Default five-role vocabulary, applied as GitHub labels. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
