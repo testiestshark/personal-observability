@@ -25,6 +25,22 @@ Keep it current as part of the job, not as a separate chore:
 [docs/ROADMAP.md](docs/ROADMAP.md) stays coarse — milestones and data domains. Concrete,
 pick-up-able tasks belong in the backlog.
 
+## Agent skills
+
+### Issue tracker
+
+Local markdown under `.scratch/<feature>/`. `docs/backlog.md` remains the source of truth for
+what to work on next; `.scratch/` holds the specs and tickets for a piece of work in flight,
+and finished ones are deleted, as with backlog items. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five-role vocabulary, recorded as a `Status:` line in each ticket. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
 ## Stack
 
 TanStack Start (React 19) + Vite, Tailwind v4, Supabase (Postgres/Auth/Storage). Package manager is **Bun** — use `bun`/`bunx`, not `npm`/`npx`.
