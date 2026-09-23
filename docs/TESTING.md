@@ -43,7 +43,7 @@ So, in rough order of value:
    action asks first and reports failure. Not styling, and not layout.
 3. **Everything else** — currently not covered. Server functions in
    `weight.functions.ts` are untested because they need a Supabase client; see the
-   end-to-end note in [backlog.md](backlog.md#deliberate-non-goals).
+   end-to-end note in [NON_GOALS.md](NON_GOALS.md).
 
 ## Conventions
 
@@ -77,4 +77,4 @@ Those stubs are there to stop irrelevant crashes, **not** to be asserted against
 consequence worth knowing: `WeightWheel` is driven by scroll position in a real browser,
 and that path cannot be tested here. Its tests exercise clicking a row and the arrow
 keys, which reach the same `onChange`. Genuine scroll-snapping behaviour needs a real
-browser and is out of scope by the decision recorded in the backlog.
+browser and is out of scope by the decision recorded in [NON_GOALS.md](NON_GOALS.md).

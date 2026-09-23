@@ -1,14 +1,7 @@
 # Issue tracker: GitHub
 
-Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
-
-## Relationship to docs/backlog.md
-
-`docs/backlog.md` is the queue of outstanding work and is what an open-ended "what's next?"
-resolves to. GitHub issues hold the specs and tickets for work that has been picked up.
-When a backlog item is promoted to issues, delete it from the backlog in the same commit
-and put the issue number in the commit message. A PR that finishes a ticket says
-`Closes #<n>`. Do not keep the same task in both places.
+Outstanding work, specs and tickets for this repo live as GitHub issues. Use the `gh` CLI
+for all operations. A PR that finishes a ticket says `Closes #<n>`.
 
 ## Account
 

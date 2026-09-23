@@ -3,6 +3,11 @@
 Status: design only and parked. No code, migrations, or GitHub configuration exist
 yet.
 
+> **See also:** [GITHUB_MULTI_ACCOUNT.md](GITHUB_MULTI_ACCOUNT.md) (research, 2026-09-23) —
+> reading commits and daily totals for both GitHub accounts. It recommends per-account
+> tokens on a Railway worker instead of this App-installation flow for _reading data_,
+> and explains why. That choice is open for the owner to make.
+
 ## 1. Milestone definition
 
 **Will do:**
