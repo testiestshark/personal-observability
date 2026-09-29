@@ -24,6 +24,13 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   the next regeneration. `react-refresh/only-export-components` is switched off for
   that path in `eslint.config.js` instead, and remains on everywhere else.
 
+- **Correlating Garmin and Hevy records of the same gym visit.** Decided on 2026-09-29
+  (#21). The owner does not record strength training on the watch, so a Garmin
+  strength activity never exists alongside a Hevy workout. The "future presentation
+  layer may correlate them" notes in [ARCHITECTURE.md](ARCHITECTURE.md) and
+  [HEVY.md](integrations/HEVY.md) describe work that will not be built; ingestion
+  keeps each source's records separate regardless.
+
 - **Pagination or "load more" for the weigh-in History list.** Settled on 2026-08-19.
   `HISTORY_LIMIT` is 10,000 rows — about 27 years of daily weigh-ins. Closed, not a gap.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
