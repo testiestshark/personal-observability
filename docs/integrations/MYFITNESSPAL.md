@@ -366,19 +366,19 @@ remains untested. Remaining before wiring this into the schema:
 
 ## Comparison
 
-| Route                                | Calories | Macros  | Free MFP account | Automatic                 | Cost                    | ToS risk | Effort          |
-| ------------------------------------ | -------- | ------- | ---------------- | ------------------------- | ----------------------- | -------- | --------------- |
-| Official MFP API                     | —        | —       | No access        | —                         | —                       | —        | Not available   |
-| MFP file export                      | Yes      | Yes     | **No** (Premium) | No (emailed zip)          | Premium subscription    | None     | Low (manual)    |
-| Printable report / diary sharing     | Yes      | Yes     | Yes              | Only by scraping          | Free                    | High     | —               |
-| GDPR access request                  | Unknown  | Unknown | Yes              | No                        | Free                    | None     | Manual          |
-| python-myfitnesspal / cookie clients | Yes      | Yes     | Yes              | Yes, fragile              | Free                    | **High** | Medium, ongoing |
-| Health Connect + HC Webhook          | Yes      | Yes     | Yes              | Yes (per meal)            | Free                    | Low      | Medium          |
-| Apple Health + Health Auto Export    | Yes      | Yes     | Yes              | Yes, only while unlocked  | $5.99/yr or $24.99 once | Low      | Medium          |
-| Google Health API                    | Yes      | Yes     | Yes              | 7-day tokens unverified   | Free / CASA to publish  | Low      | High            |
-| **Existing Garmin sync**             | **Yes, confirmed live** | **No** | Yes | **Yes (already running)** | Free            | None new | **Low**         |
-| Terra                                | Yes      | Yes     | Unverified       | Yes                       | $399–$499/month         | Low      | Medium          |
-| Cronometer / Zapier / IFTTT          | —        | —       | —                | —                         | —                       | —        | Not available   |
+| Route                                | Calories                | Macros  | Free MFP account | Automatic                 | Cost                    | ToS risk | Effort          |
+| ------------------------------------ | ----------------------- | ------- | ---------------- | ------------------------- | ----------------------- | -------- | --------------- |
+| Official MFP API                     | —                       | —       | No access        | —                         | —                       | —        | Not available   |
+| MFP file export                      | Yes                     | Yes     | **No** (Premium) | No (emailed zip)          | Premium subscription    | None     | Low (manual)    |
+| Printable report / diary sharing     | Yes                     | Yes     | Yes              | Only by scraping          | Free                    | High     | —               |
+| GDPR access request                  | Unknown                 | Unknown | Yes              | No                        | Free                    | None     | Manual          |
+| python-myfitnesspal / cookie clients | Yes                     | Yes     | Yes              | Yes, fragile              | Free                    | **High** | Medium, ongoing |
+| Health Connect + HC Webhook          | Yes                     | Yes     | Yes              | Yes (per meal)            | Free                    | Low      | Medium          |
+| Apple Health + Health Auto Export    | Yes                     | Yes     | Yes              | Yes, only while unlocked  | $5.99/yr or $24.99 once | Low      | Medium          |
+| Google Health API                    | Yes                     | Yes     | Yes              | 7-day tokens unverified   | Free / CASA to publish  | Low      | High            |
+| **Existing Garmin sync**             | **Yes, confirmed live** | **No**  | Yes              | **Yes (already running)** | Free                    | None new | **Low**         |
+| Terra                                | Yes                     | Yes     | Unverified       | Yes                       | $399–$499/month         | Low      | Medium          |
+| Cronometer / Zapier / IFTTT          | —                       | —       | —                | —                         | —                       | —        | Not available   |
 
 ## Unverified points
 
