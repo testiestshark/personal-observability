@@ -300,7 +300,9 @@ def normalize_daily_health(
 
     Total calories include resting metabolism. Active calories are the useful
     movement-only value, so both are retained instead of presenting one
-    ambiguous "calories burned" number.
+    ambiguous "calories burned" number. Consumed calories are food intake that a
+    linked food logger (MyFitnessPal) sends to Garmin; they are null until that
+    link exists.
     """
     if not isinstance(rows, list):
         raise SyncError("Garmin returned an unexpected daily-health response.")
@@ -321,6 +323,7 @@ def normalize_daily_health(
         steps = _whole_non_negative(item.get("totalSteps", item.get("steps")))
         active_calories = _whole_non_negative(item.get("activeKilocalories"))
         total_calories = _whole_non_negative(item.get("totalKilocalories"))
+        consumed_calories = _whole_non_negative(item.get("consumedKilocalories"))
         resting_heart_rate = _whole_non_negative(item.get("restingHeartRate"))
         if resting_heart_rate is not None and not 1 <= resting_heart_rate <= 300:
             resting_heart_rate = None
@@ -330,6 +333,7 @@ def normalize_daily_health(
             steps is None
             and active_calories is None
             and total_calories is None
+            and consumed_calories is None
             and resting_heart_rate is None
             and not sleep
             and vo2_max is None
@@ -342,6 +346,7 @@ def normalize_daily_health(
             "steps": steps,
             "active_calories_kcal": active_calories,
             "total_calories_kcal": total_calories,
+            "consumed_calories_kcal": consumed_calories,
             "resting_heart_rate_bpm": resting_heart_rate,
             "vo2_max": vo2_max,
             "source_synced_at": _provider_utc_timestamp(

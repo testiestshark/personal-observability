@@ -1,7 +1,10 @@
 # MyFitnessPal nutrition integration options
 
-**Status: Research only / Not Implemented. Researched on 2026-09-23, calorie route
-confirmed live on 2026-09-28.**
+**Status: Calories implemented; macros not implemented. Researched on 2026-09-23,
+calorie route confirmed live on 2026-09-28, and the owner confirmed on 2026-09-29 that
+Garmin's value matches the MFP diary total. Calories are stored as
+`daily_health_metrics.consumed_calories_kcal` by the Garmin sync (#24). Macros are
+tracked in #25.**
 
 The goal is to get daily calories, carbohydrates, protein and fat from the owner's
 **free** MyFitnessPal (MFP) account into Supabase automatically. The owner logs food
