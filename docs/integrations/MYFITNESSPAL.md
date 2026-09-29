@@ -43,11 +43,9 @@ worker on Railway ([GARMIN.md](GARMIN.md), [RAILWAY.md](RAILWAY.md)).
    §5). This is a direct read of the live Garmin API on the owner's linked account, not
    a secondary report. The worker already calls `garmin.get_stats(day)` for every day
    ([`scripts/garmin/garmin_sync.py`](../../scripts/garmin/garmin_sync.py), `sync()`).
-   `normalize_daily_health()` currently drops the field. Storing it needs one nullable
-   `consumed_calories_kcal` column and one line of normalization. It needs no new
-   credentials, no new service and no new ToS exposure. Before wiring it into the
-   schema, the owner should eyeball one day's `consumedKilocalories` against that same
-   day's MFP diary total to confirm the number itself (not just its presence) matches.
+   `normalize_daily_health()` now stores it as `consumed_calories_kcal` (#24), with no
+   new credentials, no new service and no new ToS exposure. On 2026-09-29 the owner
+   confirmed the 2026-09-28 value (1134 kcal) matches that day's MFP diary total.
 2. **Macros, through a phone health platform.** MFP writes meal summaries with
    nutrients to Health Connect (Android) or Apple Health (iOS). A small phone app then
    POSTs those records to an endpoint that writes them to Supabase. This is the only
@@ -333,12 +331,10 @@ confirmed live on 2026-09-28, the day the owner linked the accounts, by reading
 `get_stats(day)` directly rather than relying on the 2024 secondary report. Macros were
 out of scope for this check (the owner already knows Garmin does not carry them, per
 MFP's and Garmin's own statements above) and were not re-probed; `get_nutrition_daily_food_log(day)`
-remains untested. Remaining before wiring this into the schema:
-
-1. Have the owner compare `consumedKilocalories` against that day's MFP diary total, to
-   confirm the number itself (not just its presence) is trustworthy.
-2. Watch it for a few more days — one day's non-null value confirms the field turns on,
-   not that it stays populated and accurate on every subsequent day.
+remains untested. The owner confirmed on 2026-09-29 that the value matches the MFP diary
+total, and the sync stores it as `consumed_calories_kcal` (#24). Still worth watching for
+a few more days: one day's non-null value confirms the field turns on, not that it stays
+populated and accurate on every subsequent day.
 
 - **Free-account viability:** Yes. The Garmin link is a free-tier partner integration.
 - **Reliability:** The same as the existing Garmin worker (unofficial Garmin endpoints).
@@ -388,8 +384,9 @@ remains untested. Remaining before wiring this into the schema:
 - ~~The `consumedKilocalories` field name and its presence in the 2026 daily-summary
   payload.~~ **Resolved 2026-09-28**: confirmed present and populated on the day MFP was
   linked, via a live probe against the owner's own account (see §5).
-- Whether `consumedKilocalories` matches the owner's actual MFP diary total for the day
-  (the probe confirms the field is populated, not that its value is correct).
+- ~~Whether `consumedKilocalories` matches the owner's actual MFP diary total for the
+  day.~~ **Resolved 2026-09-29**: the owner confirmed 1134 kcal for 2026-09-28 matches
+  the MFP diary.
 - Whether the field stays reliably populated on later days, not just the linking day.
 - Whether Garmin's `/nutrition-service` endpoints return anything for MFP-linked
   accounts (out of scope for this check; macros are already known to be absent from the
