@@ -1,6 +1,7 @@
 # MyFitnessPal nutrition integration options
 
-**Status: Research only / Not Implemented. Researched on 2026-09-23**
+**Status: Research only / Not Implemented. Researched on 2026-09-23, calorie route
+confirmed live on 2026-09-28.**
 
 The goal is to get daily calories, carbohydrates, protein and fat from the owner's
 **free** MyFitnessPal (MFP) account into Supabase automatically. The owner logs food
@@ -27,15 +28,23 @@ worker on Railway ([GARMIN.md](GARMIN.md), [RAILWAY.md](RAILWAY.md)).
 
 **Recommended route: do this in two steps.**
 
-1. **Calories now, through the existing Garmin sync.** The worker already calls
-   `garmin.get_stats(day)` for every day
+1. **Calories now, through the existing Garmin sync — confirmed live 2026-09-28.** The
+   owner linked the MFP account to Garmin Connect outside this repo on 2026-09-28. A
+   read-only probe run the same day, reusing the worker's cached Garmin session
+   (`.garmin-sync/garmin/`, no Supabase writes), confirmed `get_stats('2026-09-28')`
+   now returns `consumedKilocalories: 1134.0`, `includesCalorieConsumedData: True`,
+   `netCalorieGoal: 2500` and `remainingKilocalories: 1411.0`. The three prior days
+   (2026-09-25 to 2026-09-27, before linking) all returned `consumedKilocalories: None`
+   and no `netCalorieGoal`, so the field is confirmed to turn on the day MFP-to-Garmin
+   sync starts, matching MFP's own "only future data syncs after linking" statement (see
+   §5). This is a direct read of the live Garmin API on the owner's linked account, not
+   a secondary report. The worker already calls `garmin.get_stats(day)` for every day
    ([`scripts/garmin/garmin_sync.py`](../../scripts/garmin/garmin_sync.py), `sync()`).
-   That payload is reported to contain `consumedKilocalories` from MFP
-   ([python-garminconnect #189](https://github.com/cyberjunky/python-garminconnect/issues/189)).
-   `normalize_daily_health()` currently drops it. Storing it needs one nullable column and
-   one line of normalization. It needs no new credentials, no new service and no new ToS
-   exposure. First check the field against a real day's payload, because the only source
-   for its name is a 2024 user comment.
+   `normalize_daily_health()` currently drops the field. Storing it needs one nullable
+   `consumed_calories_kcal` column and one line of normalization. It needs no new
+   credentials, no new service and no new ToS exposure. Before wiring it into the
+   schema, the owner should eyeball one day's `consumedKilocalories` against that same
+   day's MFP diary total to confirm the number itself (not just its presence) matches.
 2. **Macros, through a phone health platform.** MFP writes meal summaries with
    nutrients to Health Connect (Android) or Apple Health (iOS). A small phone app then
    POSTs those records to an endpoint that writes them to Supabase. This is the only
@@ -289,12 +298,23 @@ If the owner turns on Connect+ Nutrition, the calories-in route below stops.
 
 ### What garminconnect exposes
 
-- **The daily summary** (already fetched). A user reports that `get_stats()` returns
-  `consumedKilocalories` ("For me, this comes from MyFitnessPal"), along with
-  `remainingKilocalories` and `netCalorieGoal`
-  ([issue #189](https://github.com/cyberjunky/python-garminconnect/issues/189), 2024).
-  The library passes the payload through, so the field depends on Garmin's server and
-  not on the library version.
+- **The daily summary** (already fetched) — **confirmed live on 2026-09-28.** A 2024
+  user report said `get_stats()` returns `consumedKilocalories` ("For me, this comes
+  from MyFitnessPal"), along with `remainingKilocalories` and `netCalorieGoal`
+  ([issue #189](https://github.com/cyberjunky/python-garminconnect/issues/189)). This
+  was re-verified directly: a read-only probe against the owner's own Garmin account,
+  using the pinned `garminconnect==0.3.11` and the worker's cached bearer session
+  (no Supabase write), called `get_stats(day)` for 2026-09-25 through 2026-09-28 — the
+  day MFP was linked to Garmin. The full field set returned was
+  `activeKilocalories`, `bmrKilocalories`, `burnedKilocalories`, `consumedKilocalories`,
+  `includesCalorieConsumedData`, `netCalorieGoal`, `netRemainingKilocalories`,
+  `remainingKilocalories`, `totalKilocalories`, `restingCaloriesFromActivity`,
+  `wellnessActiveKilocalories`, `wellnessKilocalories`. Only `consumedKilocalories`,
+  `netCalorieGoal`, `remainingKilocalories` and `netRemainingKilocalories` populated on
+  2026-09-28 (`consumedKilocalories: 1134.0`); all four were `None` on the three prior
+  days. `includesCalorieConsumedData` was `True` on 2026-09-28. The library passes the
+  payload through unchanged, so the field depends on Garmin's server, not the library
+  version, and is not specific to 0.3.11.
 - **Nutrition-service endpoints.** `get_nutrition_daily_food_log(cdate)`,
   `get_nutrition_daily_meals(cdate)` and `get_nutrition_daily_settings(cdate)` call
   `/nutrition-service/food/logs/{date}`, `/nutrition-service/meals/{date}` and
@@ -305,13 +325,17 @@ If the owner turns on Connect+ Nutrition, the calories-in route below stops.
   only, and that Garmin Nutrition and MFP are mutually exclusive, they probably do not
   return MFP macros. That was not tested.
 
-**Conclusion:** The existing Garmin sync can carry **daily calories consumed** from MFP
-at almost no cost. It cannot carry carbs, protein or fat. Before building on it, run a
-one-off probe with the cached Garmin session:
+**Conclusion:** The existing Garmin sync carries **daily calories consumed** from MFP —
+confirmed live on 2026-09-28, the day the owner linked the accounts, by reading
+`get_stats(day)` directly rather than relying on the 2024 secondary report. Macros were
+out of scope for this check (the owner already knows Garmin does not carry them, per
+MFP's and Garmin's own statements above) and were not re-probed; `get_nutrition_daily_food_log(day)`
+remains untested. Remaining before wiring this into the schema:
 
-1. Print `get_stats(day)["consumedKilocalories"]` for a day with MFP logging, and compare
-   it with MFP's diary total.
-2. Print `get_nutrition_daily_food_log(day)` to confirm it holds no MFP macros.
+1. Have the owner compare `consumedKilocalories` against that day's MFP diary total, to
+   confirm the number itself (not just its presence) is trustworthy.
+2. Watch it for a few more days — one day's non-null value confirms the field turns on,
+   not that it stays populated and accurate on every subsequent day.
 
 - **Free-account viability:** Yes. The Garmin link is a free-tier partner integration.
 - **Reliability:** The same as the existing Garmin worker (unofficial Garmin endpoints).
@@ -342,26 +366,31 @@ one-off probe with the cached Garmin session:
 
 ## Comparison
 
-| Route                                | Calories | Macros  | Free MFP account | Automatic                 | Cost                    | ToS risk | Effort          |
-| ------------------------------------ | -------- | ------- | ---------------- | ------------------------- | ----------------------- | -------- | --------------- |
-| Official MFP API                     | —        | —       | No access        | —                         | —                       | —        | Not available   |
-| MFP file export                      | Yes      | Yes     | **No** (Premium) | No (emailed zip)          | Premium subscription    | None     | Low (manual)    |
-| Printable report / diary sharing     | Yes      | Yes     | Yes              | Only by scraping          | Free                    | High     | —               |
-| GDPR access request                  | Unknown  | Unknown | Yes              | No                        | Free                    | None     | Manual          |
-| python-myfitnesspal / cookie clients | Yes      | Yes     | Yes              | Yes, fragile              | Free                    | **High** | Medium, ongoing |
-| Health Connect + HC Webhook          | Yes      | Yes     | Yes              | Yes (per meal)            | Free                    | Low      | Medium          |
-| Apple Health + Health Auto Export    | Yes      | Yes     | Yes              | Yes, only while unlocked  | $5.99/yr or $24.99 once | Low      | Medium          |
-| Google Health API                    | Yes      | Yes     | Yes              | 7-day tokens unverified   | Free / CASA to publish  | Low      | High            |
-| **Existing Garmin sync**             | **Yes**  | **No**  | Yes              | **Yes (already running)** | Free                    | None new | **Low**         |
-| Terra                                | Yes      | Yes     | Unverified       | Yes                       | $399–$499/month         | Low      | Medium          |
-| Cronometer / Zapier / IFTTT          | —        | —       | —                | —                         | —                       | —        | Not available   |
+| Route                                | Calories                | Macros  | Free MFP account | Automatic                 | Cost                    | ToS risk | Effort          |
+| ------------------------------------ | ----------------------- | ------- | ---------------- | ------------------------- | ----------------------- | -------- | --------------- |
+| Official MFP API                     | —                       | —       | No access        | —                         | —                       | —        | Not available   |
+| MFP file export                      | Yes                     | Yes     | **No** (Premium) | No (emailed zip)          | Premium subscription    | None     | Low (manual)    |
+| Printable report / diary sharing     | Yes                     | Yes     | Yes              | Only by scraping          | Free                    | High     | —               |
+| GDPR access request                  | Unknown                 | Unknown | Yes              | No                        | Free                    | None     | Manual          |
+| python-myfitnesspal / cookie clients | Yes                     | Yes     | Yes              | Yes, fragile              | Free                    | **High** | Medium, ongoing |
+| Health Connect + HC Webhook          | Yes                     | Yes     | Yes              | Yes (per meal)            | Free                    | Low      | Medium          |
+| Apple Health + Health Auto Export    | Yes                     | Yes     | Yes              | Yes, only while unlocked  | $5.99/yr or $24.99 once | Low      | Medium          |
+| Google Health API                    | Yes                     | Yes     | Yes              | 7-day tokens unverified   | Free / CASA to publish  | Low      | High            |
+| **Existing Garmin sync**             | **Yes, confirmed live** | **No**  | Yes              | **Yes (already running)** | Free                    | None new | **Low**         |
+| Terra                                | Yes                     | Yes     | Unverified       | Yes                       | $399–$499/month         | Low      | Medium          |
+| Cronometer / Zapier / IFTTT          | —                       | —       | —                | —                         | —                       | —        | Not available   |
 
 ## Unverified points
 
-- The `consumedKilocalories` field name and its presence in the 2026 daily-summary
-  payload. The source is a 2024 user comment, and the probe above would confirm it.
+- ~~The `consumedKilocalories` field name and its presence in the 2026 daily-summary
+  payload.~~ **Resolved 2026-09-28**: confirmed present and populated on the day MFP was
+  linked, via a live probe against the owner's own account (see §5).
+- Whether `consumedKilocalories` matches the owner's actual MFP diary total for the day
+  (the probe confirms the field is populated, not that its value is correct).
+- Whether the field stays reliably populated on later days, not just the linking day.
 - Whether Garmin's `/nutrition-service` endpoints return anything for MFP-linked
-  accounts.
+  accounts (out of scope for this check; macros are already known to be absent from the
+  Garmin route).
 - The format, granularity and turnaround of an MFP privacy access request.
 - Whether python-myfitnesspal's `get_report()` works on a free account.
 - Whether python-myfitnesspal or `mfp-mcp` works from a headless Railway container
