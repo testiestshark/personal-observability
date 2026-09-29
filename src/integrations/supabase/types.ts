@@ -11,6 +11,7 @@ export type Database = {
       daily_health_metrics: {
         Row: {
           active_calories_kcal: number | null;
+          consumed_calories_kcal: number | null;
           created_at: string;
           day: string;
           external_id: string | null;
@@ -30,6 +31,7 @@ export type Database = {
         };
         Insert: {
           active_calories_kcal?: number | null;
+          consumed_calories_kcal?: number | null;
           created_at?: string;
           day: string;
           external_id?: string | null;
@@ -49,6 +51,7 @@ export type Database = {
         };
         Update: {
           active_calories_kcal?: number | null;
+          consumed_calories_kcal?: number | null;
           created_at?: string;
           day?: string;
           external_id?: string | null;
