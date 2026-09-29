@@ -53,3 +53,6 @@ coverage
 # and the CI workflow run the build BEFORE `tsc` — without the file, typecheck fails
 # on every route. Keep that ordering if either is changed.
 src/routeTree.gen.ts
+
+# PROTOTYPE (#21): Hevy API probe output — personal workout data, wipe me.
+.hevy-probe/
