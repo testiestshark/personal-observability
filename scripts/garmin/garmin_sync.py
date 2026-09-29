@@ -302,7 +302,8 @@ def normalize_daily_health(
     movement-only value, so both are retained instead of presenting one
     ambiguous "calories burned" number. Consumed calories are food intake that a
     linked food logger (MyFitnessPal) sends to Garmin; they are null until that
-    link exists.
+    link exists. The calorie goal is the logger's daily target as it stood that
+    day. It is a setting, not a measurement, so it never keeps a day on its own.
     """
     if not isinstance(rows, list):
         raise SyncError("Garmin returned an unexpected daily-health response.")
@@ -324,6 +325,7 @@ def normalize_daily_health(
         active_calories = _whole_non_negative(item.get("activeKilocalories"))
         total_calories = _whole_non_negative(item.get("totalKilocalories"))
         consumed_calories = _whole_non_negative(item.get("consumedKilocalories"))
+        calorie_goal = _whole_non_negative(item.get("netCalorieGoal"))
         resting_heart_rate = _whole_non_negative(item.get("restingHeartRate"))
         if resting_heart_rate is not None and not 1 <= resting_heart_rate <= 300:
             resting_heart_rate = None
@@ -347,6 +349,7 @@ def normalize_daily_health(
             "active_calories_kcal": active_calories,
             "total_calories_kcal": total_calories,
             "consumed_calories_kcal": consumed_calories,
+            "calorie_goal_kcal": calorie_goal,
             "resting_heart_rate_bpm": resting_heart_rate,
             "vo2_max": vo2_max,
             "source_synced_at": _provider_utc_timestamp(
