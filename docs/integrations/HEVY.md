@@ -46,6 +46,10 @@ Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
 - **Failures.** A `401 InvalidApiKey` (revoked key or lapsed Pro) or any other error
   fails the run and leaves stored data untouched. The Integrations page's "Last
   synced" line going stale is the signal; there is no alerting.
+- **Last synced.** Each successful run records its time in a per-source sync-run
+  table (one row per owner and source). It does not use the newest workout row, as
+  Garmin does with daily health rows: a week without training would then look the
+  same as a broken sync.
 - **UI in scope.** Only that "Last synced" line. Workouts already appear on the day
   view through `fitness_activities`. A workout detail view and per-exercise progress
   charts are follow-up issues.
