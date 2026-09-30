@@ -16,8 +16,7 @@ never in source control, browser code, logs, or chat.
 ## Design
 
 Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
-[issue comment][probe-results]; the throwaway probe is on branch
-[`prototype/hevy-api`][prototype]). Terms follow [CONTEXT.md](../../CONTEXT.md).
+[issue comment][probe-results]). Terms follow [CONTEXT.md](../../CONTEXT.md).
 
 - **Storage.** Each workout is one `fitness_activities` row (`source = 'hevy'`,
   `provider = 'hevy_public_api'`, `external_id` = workout `id`,
@@ -424,4 +423,3 @@ Accessed 2026-09-23.
 [hevy-mcp]: https://github.com/chrisdoc/hevy-mcp
 [issue]: https://github.com/testiestshark/personal-observability/issues/21
 [probe-results]: https://github.com/testiestshark/personal-observability/issues/21#issuecomment-5896520860
-[prototype]: https://github.com/testiestshark/personal-observability/tree/prototype/hevy-api
