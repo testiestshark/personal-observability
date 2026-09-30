@@ -8,13 +8,18 @@ import {
   Footprints,
   HeartPulse,
   Moon,
+  Scale,
   Sparkles,
+  Utensils,
 } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
 import { PageHeader, Placeholder } from "@/components/app-shell";
 import {
+  caloriesEatenNote,
+  energyBalance,
+  energyBalanceNote,
   formatActivitySummary,
   formatActivityTime,
   formatActivityType,
@@ -24,8 +29,14 @@ import {
   formatSleepWindow,
   formatSyncTime,
   formatVo2Max,
+  goalProgress,
+  isCompleteDay,
 } from "@/lib/health/format";
-import { getDailyHealth, getFitnessActivitiesForDay } from "@/lib/health/health.functions";
+import {
+  type DailyHealth,
+  getDailyHealth,
+  getFitnessActivitiesForDay,
+} from "@/lib/health/health.functions";
 import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
 
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
@@ -62,7 +73,8 @@ export const Route = createFileRoute("/")({
 
 function Today() {
   const { health, activities, day: viewedDay } = Route.useLoaderData();
-  const isToday = viewedDay === currentLondonDay();
+  const today = currentLondonDay();
+  const isToday = viewedDay === today;
   const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
   const metrics = [
     {
@@ -70,18 +82,6 @@ function Today() {
       value: health?.steps?.toLocaleString("en-GB") ?? "—",
       note: isToday ? "Today" : formatDayLabel(viewedDay),
       icon: Footprints,
-    },
-    {
-      label: "Active calories",
-      value: formatCalories(health?.activeCaloriesKcal),
-      note: "Movement energy",
-      icon: Flame,
-    },
-    {
-      label: "Total calories",
-      value: formatCalories(health?.totalCaloriesKcal),
-      note: "Including resting energy",
-      icon: Sparkles,
     },
     {
       label: "Total sleep",
@@ -114,6 +114,21 @@ function Today() {
       <DayNavigator day={viewedDay} isToday={isToday} />
 
       <div className="grid gap-5">
+        <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
+          <div>
+            <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
+              Garmin + MyFitnessPal
+            </p>
+            <h2 className="mt-1 font-display text-xl text-foreground">Energy</h2>
+          </div>
+
+          {health ? (
+            <EnergyTiles health={health} day={viewedDay} today={today} />
+          ) : (
+            <EmptyState>No Garmin health data has arrived for this day yet.</EmptyState>
+          )}
+        </section>
+
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -185,6 +200,58 @@ function Today() {
   );
 }
 
+function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
+  const eaten = health.consumedCaloriesKcal;
+  const total = health.totalCaloriesKcal;
+  const complete = isCompleteDay(day, today, health.sourceSyncedAt);
+  const progress = goalProgress(eaten, health.calorieGoalKcal);
+
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+      <MetricCard
+        label="Calories eaten"
+        value={formatCalories(eaten)}
+        note={caloriesEatenNote(eaten, health.calorieGoalKcal, day, today)}
+        icon={Utensils}
+      >
+        {progress !== null ? (
+          <div
+            role="progressbar"
+            aria-label="Calories eaten against goal"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
+            className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
+          >
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${progress * 100}%` }}
+            />
+          </div>
+        ) : null}
+      </MetricCard>
+      <MetricCard
+        label="Total calories"
+        value={formatCalories(total)}
+        note="Garmin estimate"
+        icon={Sparkles}
+      />
+      <MetricCard
+        label="Active calories"
+        value={formatCalories(health.activeCaloriesKcal)}
+        note="Movement energy"
+        icon={Flame}
+      />
+      <MetricCard
+        label="Energy balance"
+        value={formatCalories(energyBalance(eaten, total, complete))}
+        note={energyBalanceNote(complete, eaten, total)}
+        icon={Scale}
+      />
+    </div>
+  );
+}
+
 function DayNavigator({ day, isToday }: { day: string; isToday: boolean }) {
   const previousDay = shiftDay(day, -1);
   const nextDay = shiftDay(day, 1);
@@ -228,11 +295,13 @@ function MetricCard({
   value,
   note,
   icon: Icon,
+  children,
 }: {
   label: string;
   value: string;
-  note: string;
+  note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
+  children?: ReactNode;
 }) {
   return (
     <article className="min-w-0 rounded-xl border border-border bg-background/40 p-3.5">
@@ -241,7 +310,8 @@ function MetricCard({
         <span className="truncate text-[11px]">{label}</span>
       </div>
       <p className="mt-3 truncate font-display text-xl text-foreground md:text-2xl">{value}</p>
-      <p className="mt-1 truncate text-[10px] text-muted-foreground">{note}</p>
+      {children}
+      {note ? <p className="mt-1 truncate text-[10px] text-muted-foreground">{note}</p> : null}
     </article>
   );
 }
