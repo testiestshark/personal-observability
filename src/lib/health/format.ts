@@ -1,3 +1,5 @@
+import { londonDayKey } from "@/lib/weight/units";
+
 import type { FitnessActivity } from "./health.functions";
 
 const londonTime = new Intl.DateTimeFormat("en-GB", {
@@ -63,4 +65,41 @@ export function formatActivitySummary(activity: FitnessActivity): string {
 export function formatSyncTime(value: string | null | undefined): string | null {
   if (!value) return null;
   return `Updated ${londonTime.format(new Date(value))}`;
+}
+
+/** The first London day MyFitnessPal passed food to Garmin. See CONTEXT.md. */
+export const MFP_LINK_DATE = "2026-09-28";
+
+/**
+ * Whether a day's Total calories is final: the day has ended in London, and
+ * Garmin's last watch sync came after that end.
+ *
+ * "After the London midnight ending `day`" is the same as "the sync's London
+ * day is later than `day`", which lets the day key do the BST/GMT offset work.
+ * Day keys compare correctly as strings.
+ */
+export function isCompleteDay(
+  day: string,
+  today: string,
+  sourceSyncedAt: string | null | undefined,
+): boolean {
+  if (!sourceSyncedAt || day >= today) return false;
+  return londonDayKey(sourceSyncedAt) > day;
+}
+
+/** Calories eaten minus Total calories; null unless the day is complete. */
+export function energyBalance(
+  caloriesEaten: number | null | undefined,
+  totalCalories: number | null | undefined,
+  complete: boolean,
+): number | null {
+  if (!complete || caloriesEaten == null || totalCalories == null) return null;
+  return caloriesEaten - totalCalories;
+}
+
+/** Why a day has no Calories eaten. */
+export function missingCaloriesEatenNote(day: string, today: string): string {
+  if (day < MFP_LINK_DATE) return "Before MFP was linked";
+  if (day === today) return "Not logged yet";
+  return "Nothing logged";
 }
