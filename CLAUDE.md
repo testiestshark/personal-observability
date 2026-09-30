@@ -121,9 +121,15 @@ git pull --ff-only origin main
 git status
 ```
 
-Confirm the working tree is clean before making changes.
+Confirm the working tree is clean, then create a worktree — every change, however small, gets its own, and the primary checkout stays on `main`:
 
-**For an ordinary feature:** work on a feature branch (`git switch -c feature/short-description`), develop and test with `bun run dev`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
+```powershell
+git worktree add .claude/worktrees/short-description -b feature/short-description
+```
+
+Worktrees always live under `.claude/worktrees/` (gitignored). Do all edits, `bun install`, and commands from inside the worktree. When the PR is merged, `git worktree remove .claude/worktrees/short-description`.
+
+**For an ordinary feature:** in that worktree, develop and test with `bun run dev`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
 
 **For a database change:**
 
