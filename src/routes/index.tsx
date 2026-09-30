@@ -15,7 +15,7 @@ import {
 import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
-import { PageHeader, Placeholder } from "@/components/app-shell";
+import { PageHeader } from "@/components/app-shell";
 import {
   caloriesEatenNote,
   energyBalance,
@@ -191,10 +191,6 @@ function Today() {
             <EmptyState>No recorded Garmin activities on this day.</EmptyState>
           )}
         </section>
-
-        <Placeholder label="Daily state" note="Mood, energy, focus, stress and meaning check-in." />
-        <Placeholder label="Making" note="Commits across both GitHub accounts." />
-        <Placeholder label="Attention" note="Computer activity and iPhone Screen Time." />
       </div>
     </>
   );

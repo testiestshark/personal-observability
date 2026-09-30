@@ -15,18 +15,12 @@ import {
 import { WeightCalendar } from "@/components/weight-calendar";
 import { WeightTrend } from "@/components/weight-trend";
 import { WeightWheel } from "@/components/weight-picker";
-import {
-  currentLondonDay,
-  currentLondonMonth,
-  formatEntryDay,
-  formatWeight,
-} from "@/lib/weight/units";
+import { currentLondonDay, currentLondonMonth } from "@/lib/weight/units";
 import {
   addWeightEntry,
   deleteWeightEntry,
   listMonthWeights,
   listWeightEntries,
-  type WeightEntry,
 } from "@/lib/weight/weight.functions";
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -75,11 +69,7 @@ function Weight() {
   // A weigh-in is a day, not an instant — at most one per day.
   const [day, setDay] = useState(currentLondonDay);
   const [pending, setPending] = useState(false);
-  // Two separate errors: the form's belongs inside the dialog, but a failed
-  // delete happens out on the page and would never be seen if it shared that
-  // state — the dialog is shut, and opening it clears the message anyway.
   const [error, setError] = useState<string | null>(null);
-  const [historyError, setHistoryError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -120,12 +110,6 @@ function Weight() {
     if (result.error) return result.error;
     await router.invalidate();
     return null;
-  }
-
-  // The calendar surfaces its own failures inside the confirmation dialog; the
-  // History list has nowhere to put one, so it gets a line of its own.
-  async function handleHistoryDelete(id: string) {
-    setHistoryError(await handleDelete(id));
   }
 
   return (
@@ -197,46 +181,6 @@ function Weight() {
         />
 
         <WeightTrend entries={entries} />
-        <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-medium">History</h2>
-
-          {historyError ? (
-            <p role="alert" className="mt-3 text-sm text-destructive">
-              {historyError}
-            </p>
-          ) : null}
-
-          {entries.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Nothing recorded yet. Your first entry will appear here.
-            </p>
-          ) : (
-            <ul className="mt-2">
-              {entries.map((entry: WeightEntry) => (
-                <li
-                  key={entry.id}
-                  className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border py-3 last:border-0"
-                >
-                  <span className="truncate text-sm text-muted-foreground">
-                    {formatEntryDay(entry.recordedAt)}
-                  </span>
-                  <span className="shrink-0 text-sm tabular-nums text-foreground">
-                    {formatWeight(entry.weightKg, entry.unit)}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="shrink-0 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleHistoryDelete(entry.id)}
-                    aria-label={`Delete entry from ${formatEntryDay(entry.recordedAt)}`}
-                  >
-                    Delete
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
       </div>
     </>
   );
