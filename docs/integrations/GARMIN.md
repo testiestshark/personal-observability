@@ -15,10 +15,15 @@ that ingestion be automatic.
 
 ## Scope
 
-The current slice ingests steps, active calories, total calories, sleep start/end,
-total sleep, resting heart rate, VO2 max, Garmin's source-sync time,
-and recorded fitness activities. Active calories are movement energy; total
-calories also include resting metabolism. Garmin activities retain useful summary
+The current slice ingests steps, active calories, total calories, consumed calories,
+the MyFitnessPal calorie goal, sleep start/end, total sleep, resting heart rate, VO2
+max, Garmin's source-sync time, and recorded fitness activities. Active calories are movement energy; total
+calories also include resting metabolism. Consumed calories are food intake that
+MyFitnessPal sends to Garmin Connect, and are null for days before the accounts were
+linked on 2026-09-28 ([MYFITNESSPAL.md](MYFITNESSPAL.md)). The calorie goal is the
+daily target set in MyFitnessPal, stored per day as Garmin reports it for that day
+(not yet checked across a goal change: the seven-day re-fetch rewrites recent days if
+Garmin backdates a new goal). On its own it does not keep a day's row. Garmin activities retain useful summary
 fields but deliberately omit route coordinates. Detailed gym exercises and sets
 belong to the separate Hevy integration.
 

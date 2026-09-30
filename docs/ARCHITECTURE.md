@@ -42,10 +42,10 @@ one provider can be replaced without changing unrelated product code. In
 particular, the unofficial Garmin adapter may later be replaced by Garmin's
 official API or a different health provider.
 
-Garmin owns its recorded fitness activities; Hevy owns detailed strength-workout
-records. If the same gym session exists in both, source-specific external IDs keep
-both records traceable and a future presentation layer may correlate them by start
-time and duration without destroying either source record.
+Garmin owns its recorded fitness activities, such as runs; Hevy owns workouts
+(strength training), which are never recorded on the watch. Source-specific
+external IDs keep each record traceable to its provider. Correlating the two is a
+[non-goal](NON_GOALS.md). Terms follow [CONTEXT.md](../CONTEXT.md).
 
 Detailed planned designs:
 

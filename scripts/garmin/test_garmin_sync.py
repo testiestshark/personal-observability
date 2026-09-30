@@ -110,6 +110,78 @@ class NormalizeDailyHealthTests(unittest.TestCase):
         self.assertIsNone(rows[0]["steps"])
         self.assertEqual(rows[0]["active_calories_kcal"], 321)
 
+    def test_keeps_consumed_calories_from_linked_food_logging(self) -> None:
+        rows = normalize_daily_health(
+            [
+                {
+                    "calendarDate": "2026-09-28",
+                    "totalKilocalories": 2345.6,
+                    "consumedKilocalories": 1134.0,
+                }
+            ],
+            "user-1",
+            "2026-09-28T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows[0]["consumed_calories_kcal"], 1134)
+
+    def test_consumed_calories_are_null_before_food_logging_was_linked(self) -> None:
+        rows = normalize_daily_health(
+            [
+                {
+                    "calendarDate": "2026-09-27",
+                    "totalKilocalories": 2345.6,
+                    "consumedKilocalories": None,
+                }
+            ],
+            "user-1",
+            "2026-09-27T12:00:00+00:00",
+        )
+
+        self.assertIsNone(rows[0]["consumed_calories_kcal"])
+
+    def test_keeps_the_calorie_goal_set_in_linked_food_logging(self) -> None:
+        rows = normalize_daily_health(
+            [
+                {
+                    "calendarDate": "2026-09-28",
+                    "consumedKilocalories": 1134.0,
+                    "netCalorieGoal": 2500.0,
+                }
+            ],
+            "user-1",
+            "2026-09-28T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows[0]["calorie_goal_kcal"], 2500)
+
+    def test_calorie_goal_is_null_before_food_logging_was_linked(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-27", "totalKilocalories": 2345.6}],
+            "user-1",
+            "2026-09-27T12:00:00+00:00",
+        )
+
+        self.assertIsNone(rows[0]["calorie_goal_kcal"])
+
+    def test_a_calorie_goal_alone_does_not_keep_a_day(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-28", "netCalorieGoal": 2500.0}],
+            "user-1",
+            "2026-09-28T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows, [])
+
+    def test_keeps_a_day_when_only_consumed_calories_are_available(self) -> None:
+        rows = normalize_daily_health(
+            [{"calendarDate": "2026-09-28", "consumedKilocalories": 1134.0}],
+            "user-1",
+            "2026-09-28T12:00:00+00:00",
+        )
+
+        self.assertEqual(rows[0]["consumed_calories_kcal"], 1134)
+
     def test_skips_a_day_with_no_valid_measurements(self) -> None:
         rows = normalize_daily_health(
             [{"calendarDate": "2026-09-06", "totalSteps": True, "totalKilocalories": -1}],

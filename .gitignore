@@ -56,3 +56,6 @@ src/routeTree.gen.ts
 
 # PROTOTYPE (#21): Hevy API probe output — personal workout data, wipe me.
 .hevy-probe/
+
+# Agent worktrees (see CLAUDE.md, Operating rules)
+.claude/worktrees/

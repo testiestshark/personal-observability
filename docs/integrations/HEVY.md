@@ -1,29 +1,64 @@
 # Direct Hevy strength-workout integration
 
-**Status: Planned / API access purchased / Not Implemented**
+**Status: Designed (2026-09-29) / API access purchased / Not Implemented**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
 activity platform is part of the architecture.
 
 ```text
-Hevy app -> Hevy public API -> Railway worker -> Supabase -> Personal Observability
+Hevy app -> Hevy public API -> Railway cron worker -> Supabase -> Personal Observability
 ```
 
-The first implementation should ingest completed workouts, exercises, individual
-sets, weights, repetitions, set types, RPE, notes, and stable Hevy identifiers.
-Incremental synchronization should poll `/v1/workouts/events` for updates and
-deletions, then fetch and idempotently upsert the affected workout details.
-
 The Hevy API key is a secret. Store it only in Railway/local secret configuration,
-never in source control, browser code, logs, or chat. The integration must write
-through the authenticated app user's Supabase session so existing ownership RLS
-continues to apply.
+never in source control, browser code, logs, or chat.
 
-Garmin may also contain a summary of a strength activity recorded on the watch.
-That Garmin record and the Hevy workout are distinct source records. A future UI
-may correlate them using start time and duration, but ingestion must not guess that
-two records are identical or discard either provider's data.
+## Design
+
+Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
+[issue comment][probe-results]; the throwaway probe is on branch
+[`prototype/hevy-api`][prototype]). Terms follow [CONTEXT.md](../../CONTEXT.md).
+
+- **Storage.** Each workout is one `fitness_activities` row (`source = 'hevy'`,
+  `provider = 'hevy_public_api'`, `external_id` = workout `id`,
+  `activity_type = 'strength_training'`). Its exercises and sets go in two child
+  tables, each following the ownership pattern in
+  [supabase/README.md](../../supabase/README.md). An exercise keeps its
+  `exercise_template_id` and its title at the time of logging; the exercise-template
+  catalogue is not synced.
+- **Totals on the fitness activity.** `total_sets` counts every set, `active_sets`
+  the non-warmup sets; `total_reps` and `total_volume_kg` (weight × reps) count
+  non-warmup sets only; `duration_seconds` is `end_time − start_time`. Calories and
+  heart rate stay null.
+- **Local day.** `start_time` converted to `Europe/London`. Never `created_at`: 477
+  of 493 workouts share a `created_at` from a bulk import.
+- **Runtime.** A Python Railway cron service under `scripts/hevy/`, hourly at a
+  non-zero minute, signing in as the app user exactly as the
+  [Garmin worker](RAILWAY.md) does, so every write goes through RLS.
+- **Sync.** Stateless: each run reads `events?since=<now − 7 days>` and applies the
+  events oldest first. `updated` upserts the fitness activity in place and replaces
+  its exercises and sets in one transaction; `deleted` hard-deletes it. This is safe
+  without a stored watermark because the endpoint holds one event per workout (its
+  latest state) and an edit moves a workout back into the window. A run only misses
+  changes if the worker is down for more than 7 days.
+- **Backfill.** A `backfill` command reads `events?since=1970-01-01T00:00:00Z`, run
+  once locally against hosted Supabase. Rerunning it is harmless.
+- **Failures.** A `401 InvalidApiKey` (revoked key or lapsed Pro) or any other error
+  fails the run and leaves stored data untouched. The Integrations page's "Last
+  synced" line going stale is the signal; there is no alerting.
+- **Last synced.** Each successful run records its time in a per-source sync-run
+  table (one row per owner and source). It does not use the newest workout row, as
+  Garmin does with daily health rows: a week without training would then look the
+  same as a broken sync.
+- **UI in scope.** Only that "Last synced" line. Workouts already appear on the day
+  view through `fitness_activities`. A workout detail view and per-exercise progress
+  charts are follow-up issues.
+- **Not built.** Correlating Garmin and Hevy records (see
+  [NON_GOALS.md](../NON_GOALS.md)) and the webhook, which cannot replace polling.
+
+The reference below is the research the design was built on. Where it and this
+section disagree (the stored-watermark algorithm, re-fetching workouts after
+events), this section wins.
 
 ## Hevy public API reference
 
@@ -212,18 +247,21 @@ What the spec says ([spec][spec]):
   - `{ type: "deleted", id: string, deleted_at?: string }`. Only `type` and `id` are
     required; `deleted_at` is optional.
 
-Not stated, all **unverified**:
+Not stated in the spec, but **observed** with the real key on 2026-09-29
+([probe results][probe-results]):
 
-- Whether a newly created workout appears as an `updated` event. **Inferred** yes,
-  since the endpoint only knows two types and is meant to keep a cache complete.
-  Confirm this on the first real run.
-- Which timestamp `since` is compared against (`updated_at` / `deleted_at`?), and
-  whether the comparison is `>` or `≥`.
-- Whether one workout can produce several events in one window, or only its latest
-  state.
-- How long deletion events are kept.
+- A newly created workout appears as an `updated` event.
+- There is **one event per workout**, carrying its latest state (495 events, 495
+  distinct ids), not a history of changes.
+- `since` is compared against `updated_at` (and `deleted_at` for deletions),
+  **inclusively** (`≥`).
+- `since=1970-01-01T00:00:00Z` returns every workout, so the events endpoint alone
+  can backfill.
+- Deletion events were still present after about 5 weeks. The upper bound is
+  **unverified**.
 
-Recommended sync algorithm (**inferred** from the semantics above):
+Research-time sync algorithm (**superseded** by the stateless 7-day window in
+[Design](#design); kept for the reasoning):
 
 1. **Backfill once**: page through `GET /v1/workouts?pageSize=10` until
    `page > page_count` and upsert every workout. Check the total against
@@ -255,11 +293,13 @@ The `workoutId` delivered by the webhook (below) could trigger an earlier poll, 
 'hevy', external_id = workout.id)` as the natural key.
 - Exercise within a workout: `(workout.id, exercise.index)`. It is positional, so
   reordering in the app changes it.
-- Set: `(workout.id, exercise.index, set.index)`. Also positional.
+- Set: `(workout.id, exercise.index, set.index)`. Also positional. **Observed:**
+  `set.index` restarts at 0 for each exercise (2,650 of 2,650 exercises).
 - Exercise template: `exercise_template_id` (text). Titles can change, and custom
   templates belong to the user (`is_custom`).
-- Hevy user: `/v1/user/info` returns `data.id` (UUID). Store it to detect a key that
-  belongs to a different Hevy account.
+- Hevy user: `/v1/user/info` returns `data.id` (UUID). It could detect a key that
+  belongs to a different Hevy account; the design does not check it (single user,
+  one key).
 
 ### Webhooks
 
@@ -280,16 +320,19 @@ Hevy's settings page offers a webhook, but the OpenAPI spec does not document it
   edits or deletions (the text says only "new workout"), and whether a subscription
   can be removed. The web app calls an internal `webhook-subscription` route. On the
   public API, `GET /v1/webhook-subscription` returned `401 InvalidApiKey` rather than
-  404 ([probe]), which suggests an undocumented public route. Community clients
+  404 ([probe]), which suggests an undocumented public route. With a valid key it
+  returns `404 Webhook subscription not found` when none is set (2026-09-29), which
+  confirms the route exists. Community clients
   describe get/create/delete operations on it: unverified (secondary:
   [chrisdoc/hevy-mcp][hevy-mcp]).
 
 ### Rate limits and errors
 
 - **Rate limits: none documented.** The spec has no 429 response, and an
-  unauthenticated probe showed no rate-limit headers ([probe]). The only guidance is
-  to avoid requests exactly on the hour ([spec][spec]). Poll modestly, and on a 429
-  or 5xx back off and keep the watermark.
+  unauthenticated probe showed no rate-limit headers ([probe]). With a real key, 30
+  sequential requests all returned `200` in about 95 ms with no rate-limit headers
+  (2026-09-29). The only guidance is to avoid requests exactly on the hour
+  ([spec][spec]). Poll modestly; a 429 or 5xx fails the run.
 - **Auth failure**: a missing or invalid key returns `401` with the plain-text body
   `InvalidApiKey`, not JSON ([probe]). 401 is not in the spec.
 - **Documented codes** ([spec][spec]): `400` (invalid page size or body; bodies
@@ -327,25 +370,28 @@ covers workouts and measurements and could be a manual backfill source
   ([web app][settings]).
 - **Webhook-only sync is not enough.** It covers only new workouts, so edits and
   deletions still need the events poll.
-- **The existing design conflicts with itself on RLS.** "Write through the
-  authenticated app user's Supabase session" needs a headless job to hold a user
-  session (for example a stored refresh token); it cannot use `service_role`, per
-  [CLAUDE.md](../../CLAUDE.md). This is an internal design question, not a Hevy
-  constraint, and should be settled before choosing the runtime.
+- **Writing through RLS from a headless job** needs a stored user session; it cannot
+  use `service_role`, per [CLAUDE.md](../../CLAUDE.md). Resolved: the Garmin Railway
+  worker already does this with a refresh token on a volume, and Hevy copies it.
 - **The key is powerful.** One Hevy key can also overwrite workouts (`PUT`), routines
   and body measurements. Hevy offers no read-only or scoped keys. That is another
   reason to keep it server-side only.
 - **Strava overlap.** Workouts from Hevy may also reach Strava
-  ([help][help-strava]). Keep the source records separate, as with Garmin above.
+  ([help][help-strava]). Keep the source records separate.
+- **Timestamp formats differ.** `start_time` and `end_time` end in `+00:00`;
+  `created_at` and `updated_at` end in `Z` with milliseconds (observed 2026-09-29).
 
 ### Open questions
 
-- Does a newly created workout appear as an `updated` event, and which timestamp does
-  `since` compare against? Check on the first run with the real key.
-- Does `set.index` count within an exercise or across the whole workout?
-- What happens to the key if Pro lapses, and how long are deletion events kept?
-- Webhook retry behaviour, and whether edits or deletes ever fire it.
-- Rate limits (ask `pavel@hevyapp.com` if it matters).
+Answered on 2026-09-29 (see above): new workouts as `updated` events, what `since`
+compares against, `set.index` scope, and observed rate limits. Still open, and none
+blocks the design:
+
+- What happens to the key if Pro lapses, and how long deletion events are kept
+  beyond about 5 weeks (ask `pavel@hevyapp.com`). A lapse fails the run; a 7-day
+  window only needs deletions kept for 7 days.
+- Webhook retry behaviour, and whether edits or deletes ever fire it. Not needed:
+  the design does not use the webhook.
 
 ### Sources
 
@@ -376,3 +422,6 @@ Accessed 2026-09-23.
 [help-rpe]: https://help.hevyapp.com/hc/en-us/articles/34490600233111-RPE-vs-RIR-What-They-Mean-and-How-to-Use-Them-in-Hevy
 [help-strava]: https://help.hevyapp.com/hc/en-us/articles/38279744541591-Using-Hevy-with-Strava-Setup-Syncing-and-Editing-Workouts
 [hevy-mcp]: https://github.com/chrisdoc/hevy-mcp
+[issue]: https://github.com/testiestshark/personal-observability/issues/21
+[probe-results]: https://github.com/testiestshark/personal-observability/issues/21#issuecomment-5896520860
+[prototype]: https://github.com/testiestshark/personal-observability/tree/prototype/hevy-api
