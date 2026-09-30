@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / API access purchased / Not Implemented**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Exercises, sets, deletions, backfill and Railway deployment not yet built**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
@@ -54,6 +54,23 @@ Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
   charts are follow-up issues.
 - **Not built.** Correlating Garmin and Hevy records (see
   [NON_GOALS.md](../NON_GOALS.md)) and the webhook, which cannot replace polling.
+
+## Running the worker locally
+
+The tracer ([#36][tracer]) is `scripts/hevy/hevy_sync.py`, standard library only.
+`sync` reads the last 7 days of `updated` events and upserts each workout as a
+fitness activity; exercises, sets and `deleted` events are not written yet. With
+local Supabase running and `HEVY_API_KEY` in `.env.local`:
+
+```powershell
+docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync setup
+docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync sync
+docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync test
+```
+
+`setup` signs in to the app once and keeps the session in `.hevy-sync/`
+(gitignored), separate from the Garmin worker's. Railway variables are listed in
+`scripts/hevy/railway.env.example`.
 
 The reference below is the research the design was built on. Where it and this
 section disagree (the stored-watermark algorithm, re-fetching workouts after
@@ -423,3 +440,4 @@ Accessed 2026-09-23.
 [hevy-mcp]: https://github.com/chrisdoc/hevy-mcp
 [issue]: https://github.com/testiestshark/personal-observability/issues/21
 [probe-results]: https://github.com/testiestshark/personal-observability/issues/21#issuecomment-5896520860
+[tracer]: https://github.com/testiestshark/personal-observability/issues/36
