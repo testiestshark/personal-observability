@@ -171,7 +171,6 @@ def plan_fitness_activities(
             continue
         row = _fitness_activity(event.get("workout"), user_id, synced_at)
         if row:
-            rows_by_id.pop(row["external_id"], None)
             rows_by_id[row["external_id"]] = row
 
     return sorted(rows_by_id.values(), key=lambda row: row["started_at"])
