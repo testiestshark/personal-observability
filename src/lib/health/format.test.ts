@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  caloriesEatenNote,
   energyBalance,
+  energyBalanceNote,
   formatActivitySummary,
   formatActivityType,
   formatCalories,
   formatSleep,
   formatSleepWindow,
   formatVo2Max,
+  goalProgress,
   isCompleteDay,
   missingCaloriesEatenNote,
 } from "./format";
@@ -94,5 +97,47 @@ describe("missing calories eaten note", () => {
 
   it("says today has not been logged yet rather than that nothing was logged", () => {
     expect(missingCaloriesEatenNote("2026-09-30", "2026-09-30")).toBe("Not logged yet");
+  });
+});
+
+describe("calories eaten note", () => {
+  it("shows the goal when there is one", () => {
+    expect(caloriesEatenNote(1_800, 2_500, "2026-09-30", "2026-09-30")).toBe("of 2,500");
+  });
+
+  it("shows no note when eaten is known but there is no goal for the day", () => {
+    expect(caloriesEatenNote(1_800, null, "2026-09-30", "2026-09-30")).toBeUndefined();
+  });
+
+  it("explains a missing value instead of showing the goal", () => {
+    expect(caloriesEatenNote(null, 2_500, "2026-09-30", "2026-09-30")).toBe("Not logged yet");
+  });
+});
+
+describe("goal progress", () => {
+  it("is the fraction of the goal eaten, capped at a full bar", () => {
+    expect(goalProgress(1_250, 2_500)).toBe(0.5);
+    expect(goalProgress(3_000, 2_500)).toBe(1);
+  });
+
+  it("has no bar without both a value and a positive goal", () => {
+    expect(goalProgress(null, 2_500)).toBeNull();
+    expect(goalProgress(1_250, null)).toBeNull();
+    expect(goalProgress(1_250, 0)).toBeNull();
+  });
+});
+
+describe("energy balance note", () => {
+  it("says the balance is pending while the day is not complete", () => {
+    expect(energyBalanceNote(false, 2_100, 2_600)).toBe("Final once the day is synced");
+  });
+
+  it("names the missing side on a complete day rather than blaming the sync", () => {
+    expect(energyBalanceNote(true, null, 2_600)).toBe("No calories eaten");
+    expect(energyBalanceNote(true, 2_100, null)).toBe("No total calories");
+  });
+
+  it("has no note once the balance is shown", () => {
+    expect(energyBalanceNote(true, 2_100, 2_600)).toBeUndefined();
   });
 });

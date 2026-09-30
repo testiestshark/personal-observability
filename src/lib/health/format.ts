@@ -93,8 +93,12 @@ export function energyBalance(
   totalCalories: number | null | undefined,
   complete: boolean,
 ): number | null {
-  if (!complete || caloriesEaten == null || totalCalories == null) return null;
+  if (!complete || isMissing(caloriesEaten) || isMissing(totalCalories)) return null;
   return caloriesEaten - totalCalories;
+}
+
+function isMissing(value: number | null | undefined): value is null | undefined {
+  return value === null || value === undefined;
 }
 
 /** Why a day has no Calories eaten. */
@@ -102,4 +106,37 @@ export function missingCaloriesEatenNote(day: string, today: string): string {
   if (day < MFP_LINK_DATE) return "Before MFP was linked";
   if (day === today) return "Not logged yet";
   return "Nothing logged";
+}
+
+/** The Calories eaten tile's note: the goal, or why the value is missing. */
+export function caloriesEatenNote(
+  caloriesEaten: number | null | undefined,
+  calorieGoal: number | null | undefined,
+  day: string,
+  today: string,
+): string | undefined {
+  if (isMissing(caloriesEaten)) return missingCaloriesEatenNote(day, today);
+  if (isMissing(calorieGoal)) return undefined;
+  return `of ${calorieGoal.toLocaleString("en-GB")}`;
+}
+
+/** How full the goal bar is, 0–1; null when there is no bar to draw. */
+export function goalProgress(
+  caloriesEaten: number | null | undefined,
+  calorieGoal: number | null | undefined,
+): number | null {
+  if (isMissing(caloriesEaten) || isMissing(calorieGoal) || calorieGoal <= 0) return null;
+  return Math.min(caloriesEaten / calorieGoal, 1);
+}
+
+/** Why there is no Energy balance to show, if there isn't one. */
+export function energyBalanceNote(
+  complete: boolean,
+  caloriesEaten: number | null | undefined,
+  totalCalories: number | null | undefined,
+): string | undefined {
+  if (!complete) return "Final once the day is synced";
+  if (isMissing(caloriesEaten)) return "No calories eaten";
+  if (isMissing(totalCalories)) return "No total calories";
+  return undefined;
 }

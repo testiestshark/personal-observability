@@ -17,7 +17,9 @@ import { z } from "zod";
 
 import { PageHeader, Placeholder } from "@/components/app-shell";
 import {
+  caloriesEatenNote,
   energyBalance,
+  energyBalanceNote,
   formatActivitySummary,
   formatActivityTime,
   formatActivityType,
@@ -27,8 +29,8 @@ import {
   formatSleepWindow,
   formatSyncTime,
   formatVo2Max,
+  goalProgress,
   isCompleteDay,
-  missingCaloriesEatenNote,
 } from "@/lib/health/format";
 import {
   type DailyHealth,
@@ -200,46 +202,37 @@ function Today() {
 
 function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
   const eaten = health.consumedCaloriesKcal;
-  const goal = health.calorieGoalKcal;
-  const balance = energyBalance(
-    eaten,
-    health.totalCaloriesKcal,
-    isCompleteDay(day, today, health.sourceSyncedAt),
-  );
+  const total = health.totalCaloriesKcal;
+  const complete = isCompleteDay(day, today, health.sourceSyncedAt);
+  const progress = goalProgress(eaten, health.calorieGoalKcal);
 
   return (
     <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
       <MetricCard
         label="Calories eaten"
         value={formatCalories(eaten)}
-        note={
-          eaten === null
-            ? missingCaloriesEatenNote(day, today)
-            : goal === null
-              ? ""
-              : `of ${goal.toLocaleString("en-GB")}`
-        }
+        note={caloriesEatenNote(eaten, health.calorieGoalKcal, day, today)}
         icon={Utensils}
       >
-        {eaten !== null && goal !== null && goal > 0 ? (
+        {progress !== null ? (
           <div
             role="progressbar"
             aria-label="Calories eaten against goal"
             aria-valuemin={0}
-            aria-valuemax={goal}
-            aria-valuenow={eaten}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(progress * 100)}
             className="mt-2 h-1 overflow-hidden rounded-full bg-muted"
           >
             <div
               className="h-full rounded-full bg-primary"
-              style={{ width: `${Math.min(eaten / goal, 1) * 100}%` }}
+              style={{ width: `${progress * 100}%` }}
             />
           </div>
         ) : null}
       </MetricCard>
       <MetricCard
         label="Total calories"
-        value={formatCalories(health.totalCaloriesKcal)}
+        value={formatCalories(total)}
         note="Garmin estimate"
         icon={Sparkles}
       />
@@ -251,8 +244,8 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
       />
       <MetricCard
         label="Energy balance"
-        value={formatCalories(balance)}
-        note={balance === null ? "Final once the day is synced" : "Eaten minus total"}
+        value={formatCalories(energyBalance(eaten, total, complete))}
+        note={energyBalanceNote(complete, eaten, total)}
         icon={Scale}
       />
     </div>
@@ -306,7 +299,7 @@ function MetricCard({
 }: {
   label: string;
   value: string;
-  note: string;
+  note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: ReactNode;
 }) {
