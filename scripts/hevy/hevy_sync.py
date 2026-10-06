@@ -553,6 +553,8 @@ def run_sync(
             # One bad workout must not hold back the rest; the run still fails.
             external_id = operation.get("external_id") or operation["activity"]["external_id"]
             failures.append(f"workout {external_id}: {error}")
+    if not failures:
+        supabase.record_sync_run(now.isoformat(), session)
     print(
         f"Synced {replaced} Hevy workout(s) and removed {deleted} "
         f"from {len(events)} event(s)."
