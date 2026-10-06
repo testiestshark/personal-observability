@@ -104,6 +104,61 @@ def _sets(workout: dict[str, Any]) -> list[dict[str, Any]]:
     return sets
 
 
+def _in_hevy_order(items: Any) -> list[dict[str, Any]]:
+    """The dict items of a Hevy list, ordered by their `index` (list order if absent)."""
+    if not isinstance(items, list):
+        return []
+    entries = [item for item in items if isinstance(item, dict)]
+    return sorted(
+        entries,
+        key=lambda item: (
+            item["index"]
+            if isinstance(item.get("index"), int) and not isinstance(item["index"], bool)
+            else float("inf")
+        ),
+    )
+
+
+def _planned_set(position: int, item: dict[str, Any]) -> dict[str, Any]:
+    reps = _number(item.get("reps"))
+    # An unknown type is passed on untouched: the database rejects the workout
+    # rather than the worker silently guessing what a new Hevy set type means.
+    set_type = _text(item.get("type")) or "normal"
+    return {
+        "position": position,
+        "type": set_type,
+        "weight_kg": _number(item.get("weight_kg")),
+        "reps": None if reps is None else round(reps),
+        "rpe": _number(item.get("rpe")),
+        "distance_meters": _number(item.get("distance_meters")),
+        "duration_seconds": _number(item.get("duration_seconds")),
+        "custom_metric": _number(item.get("custom_metric")),
+    }
+
+
+def _planned_exercises(workout: dict[str, Any]) -> list[dict[str, Any]]:
+    """Exercises and sets with gap-free positions; `set.index` restarts per exercise."""
+    exercises: list[dict[str, Any]] = []
+    for position, exercise in enumerate(_in_hevy_order(workout.get("exercises"))):
+        superset_id = exercise.get("superset_id")
+        exercises.append({
+            "position": position,
+            "title": _text(exercise.get("title")),
+            "exercise_template_id": _text(exercise.get("exercise_template_id")),
+            "notes": exercise["notes"] if isinstance(exercise.get("notes"), str) else None,
+            "superset_id": (
+                superset_id
+                if isinstance(superset_id, int) and not isinstance(superset_id, bool)
+                else None
+            ),
+            "sets": [
+                _planned_set(set_position, item)
+                for set_position, item in enumerate(_in_hevy_order(exercise.get("sets")))
+            ],
+        })
+    return exercises
+
+
 def _fitness_activity(
     workout: Any, user_id: str, synced_at: str
 ) -> dict[str, Any] | None:
@@ -149,6 +204,7 @@ def _fitness_activity(
         "total_reps": round(total_reps),
         "total_volume_kg": total_volume,
         "synced_at": synced_at,
+        "exercises": _planned_exercises(workout),
     }
 
 
@@ -156,6 +212,9 @@ def plan_operations(
     events: Any, user_id: str, synced_at: str
 ) -> list[dict[str, Any]]:
     """Turn Hevy workout events into ordered write operations.
+
+    A `replace` operation's activity is the fitness activity plus its nested
+    `exercises` and `sets`; the database replaces them as one unit.
 
     Hevy lists events newest first, so they are applied oldest first: a delete
     after an update wins, and so does an update after a delete. A workout that
@@ -409,19 +468,14 @@ class SupabaseSession:
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
-    def upsert_activities(
-        self, rows: list[dict[str, Any]], session: dict[str, Any]
-    ) -> None:
-        if not rows:
-            return
+    def replace_workout(self, row: dict[str, Any], session: dict[str, Any]) -> None:
+        """Store one workout, its exercises and its sets in a single transaction."""
         access_token = self._access_token(session)
         self._request(
             "POST",
-            "/rest/v1/fitness_activities?"
-            + urlencode({"on_conflict": "user_id,source,external_id"}),
-            rows,
+            "/rest/v1/rpc/replace_fitness_workout",
+            {"payload": row},
             access_token=access_token,
-            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
 
@@ -486,23 +540,25 @@ def run_sync(
     events = hevy.workout_events(sync_since(now))
     operations = plan_operations(events, user_id, now.isoformat())
     replaced = deleted = 0
-    batch: list[dict[str, Any]] = []
+    failures: list[str] = []
     for operation in operations:
-        if operation["op"] == "replace":
-            batch.append(operation["activity"])
-            continue
-        supabase.upsert_activities(batch, session)
-        replaced += len(batch)
-        batch = []
-        supabase.delete_activity(operation["external_id"], session)
-        deleted += 1
-    supabase.upsert_activities(batch, session)
-    replaced += len(batch)
-    supabase.record_sync_run(now.isoformat(), session)
+        try:
+            if operation["op"] == "replace":
+                supabase.replace_workout(operation["activity"], session)
+                replaced += 1
+            else:
+                supabase.delete_activity(operation["external_id"], session)
+                deleted += 1
+        except SyncError as error:
+            # One bad workout must not hold back the rest; the run still fails.
+            external_id = operation.get("external_id") or operation["activity"]["external_id"]
+            failures.append(f"workout {external_id}: {error}")
     print(
         f"Synced {replaced} Hevy workout(s) and removed {deleted} "
         f"from {len(events)} event(s)."
     )
+    if failures:
+        raise SyncError("Some workouts were not stored.\n" + "\n".join(failures))
 
 
 def sync() -> None:
@@ -518,7 +574,7 @@ def main() -> int:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("setup", help="Sign in once to the app and store its session.")
-    subcommands.add_parser("sync", help="Upsert workouts updated in the last 7 days.")
+    subcommands.add_parser("sync", help="Replace workouts updated in the last 7 days, with their exercises and sets.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
     args = parser.parse_args()
 
