@@ -13,6 +13,22 @@ Run `bun run verify` before pushing. It is the same sequence as
 [the CI workflow](../.github/workflows/ci.yml), so a green run locally means a green run
 on GitHub.
 
+### Python workers
+
+The sync workers in `scripts/garmin/` and `scripts/hevy/` have `unittest` suites that CI
+runs in a separate `python-workers` job (not part of `bun run verify`). To run one
+locally, from inside the worker's folder, because the tests import the worker by bare name:
+
+```powershell
+cd scripts/hevy
+python -m unittest discover -v -p "test_*.py"
+```
+
+Garmin needs `pip install -r requirements.txt` first. On Windows, also
+`pip install tzdata`: the workers use `ZoneInfo("Europe/London")`, and Windows has no
+system timezone database (Linux CI does). A new worker should be added to the job's
+`matrix.worker` list in `ci.yml`.
+
 ## Layout
 
 Tests sit next to the code they cover, as `*.test.ts` / `*.test.tsx`:

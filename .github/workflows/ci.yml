@@ -63,3 +63,38 @@ jobs:
 
       - name: Test
         run: bun run test
+
+  # The sync workers in scripts/ are Python, outside the Bun toolchain above, so
+  # their unittest suites only ran when someone remembered to run them by hand.
+  # One matrix entry per worker folder; a new worker with a test_*.py file in its
+  # folder belongs in the list. Python 3.13 matches the workers' Dockerfiles.
+  # `unittest discover` is run from inside the folder because the tests import the
+  # worker module by bare name (`from garmin_sync import ...`).
+  python-workers:
+    name: Python worker tests (${{ matrix.worker }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [garmin, hevy]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      # Not every worker has a requirements.txt (hevy is stdlib-only), so the
+      # install is conditional rather than a failure.
+      - name: Install dependencies
+        working-directory: scripts/${{ matrix.worker }}
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Test
+        working-directory: scripts/${{ matrix.worker }}
+        run: python -m unittest discover -v -p "test_*.py"
