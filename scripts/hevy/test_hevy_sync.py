@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
 from hevy_sync import (
@@ -546,6 +546,57 @@ class DeleteActivityTests(unittest.TestCase):
             parse_qs(url.query),
             {"source": ["eq.hevy"], "external_id": ["eq.w1"], "user_id": ["eq.user-1"]},
         )
+
+
+class SupabaseRetryTests(unittest.TestCase):
+    """A full backfill makes ~500 requests; a single dropped connection must not fail one."""
+
+    def setUp(self) -> None:
+        self.session = SupabaseSession("http://db", "pub", Path("/tmp/s.json"))
+        sleeper = patch("hevy_sync.time.sleep")
+        self.sleep = sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def test_retries_a_dropped_connection_then_succeeds(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            if len(attempts) < 3:
+                raise URLError(OSError(101, "Network is unreachable"))
+            return FakeResponse(b'"ok"')
+
+        with patch("hevy_sync.urlopen", open_url):
+            self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(self.sleep.call_count, 2)
+
+    def test_gives_up_after_a_few_attempts(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            raise URLError(OSError(101, "Network is unreachable"))
+
+        with patch("hevy_sync.urlopen", open_url):
+            with self.assertRaisesRegex(SyncError, "Could not reach Supabase"):
+                self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 4)
+
+    def test_does_not_retry_a_rejected_request(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            raise HTTPError(request.full_url, 400, "Bad", {}, io.BytesIO(b"{}"))
+
+        with patch("hevy_sync.urlopen", open_url):
+            with self.assertRaises(SyncError):
+                self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 1)
 
 
 class HevyApiKeyTests(unittest.TestCase):

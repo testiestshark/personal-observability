@@ -34,6 +34,8 @@ PAGE_SIZE = 10
 SYNC_WINDOW = timedelta(days=7)
 BACKFILL_SINCE = "1970-01-01T00:00:00Z"
 PROGRESS_EVERY = 50
+CONNECTION_ATTEMPTS = 4
+CONNECTION_BACKOFF_SECONDS = 1
 LONDON = ZoneInfo("Europe/London")
 
 
@@ -375,19 +377,26 @@ class SupabaseSession:
             headers.update(extra_headers)
 
         request = Request(f"{self.base_url}{path}", data=body, headers=headers, method=method)
-        try:
-            with urlopen(request, timeout=30) as response:
-                raw = response.read()
-        except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
+        # Connection-level failures are retried: Docker Desktop's host gateway drops the
+        # odd connection, and a full backfill makes ~500 requests. Every call here is
+        # idempotent, and an HTTP error response is a real answer, never retried.
+        for attempt in range(CONNECTION_ATTEMPTS):
             try:
-                parsed = json.loads(detail)
-                detail = parsed.get("message") or parsed.get("msg") or parsed.get("error_description") or detail
-            except json.JSONDecodeError:
-                pass
-            raise SyncError(f"Supabase request failed ({error.code}): {detail}") from error
-        except URLError as error:
-            raise SyncError(f"Could not reach Supabase at {self.base_url}: {error.reason}") from error
+                with urlopen(request, timeout=30) as response:
+                    raw = response.read()
+                break
+            except HTTPError as error:
+                detail = error.read().decode("utf-8", errors="replace")
+                try:
+                    parsed = json.loads(detail)
+                    detail = parsed.get("message") or parsed.get("msg") or parsed.get("error_description") or detail
+                except json.JSONDecodeError:
+                    pass
+                raise SyncError(f"Supabase request failed ({error.code}): {detail}") from error
+            except URLError as error:
+                if attempt == CONNECTION_ATTEMPTS - 1:
+                    raise SyncError(f"Could not reach Supabase at {self.base_url}: {error.reason}") from error
+                time.sleep(CONNECTION_BACKOFF_SECONDS * (attempt + 1))
 
         return json.loads(raw) if raw else None
 
