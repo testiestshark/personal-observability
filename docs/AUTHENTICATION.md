@@ -1,7 +1,9 @@
 # Authentication — local verification runbook
 
 This is a repeatable, local-only procedure for proving the auth system works against
-local Supabase, using the current checkout plus Docker. For the design/architecture
+local Supabase, using the current checkout plus Docker. It is for verifying auth
+changes. To just look at the app, use `bun run local` and the "Sign in as dev" button
+instead — see [LOCAL_DEV.md](LOCAL_DEV.md). For the design/architecture
 (why cookies and why the generated files are unused), see
 [ARCHITECTURE.md § Authentication](ARCHITECTURE.md#authentication).
 

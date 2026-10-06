@@ -97,13 +97,18 @@ bun install
 # Start local Supabase (Postgres, Auth, Storage, Studio)
 bunx supabase start
 
-# Copy the env template and fill in the local values printed by `bunx supabase status`
+# Copy the env template and fill in the local values printed by `bunx supabase status`,
+# plus DEV_LOGIN_EMAIL
 cp .env.example .env.local
 
-bun run dev
+bun run local
 ```
 
-Restart `bun run dev` after changing any environment variable.
+`bun run local` is the everyday command from then on: it starts Supabase, fills an empty
+database with a copy of the hosted data, and prints the address to open on this computer
+and on a phone. See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md).
+
+Restart it after changing any environment variable.
 
 Other useful commands:
 

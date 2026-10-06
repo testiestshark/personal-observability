@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { signIn, signUp } from "@/lib/auth/auth.functions";
+import { signIn, signInAsDev, signUp } from "@/lib/auth/auth.functions";
 import { SIGNUP_ENABLED } from "@/lib/auth/signup-policy";
 
 export const Route = createFileRoute("/login")({
@@ -21,6 +21,7 @@ export const Route = createFileRoute("/login")({
 type Mode = "signin" | "signup";
 
 function LoginPage() {
+  const { localDev } = Route.useRouteContext();
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,6 +58,25 @@ function LoginPage() {
       // The session cookie is written by the sign-in server function. Use a full
       // document navigation so the next request is rendered with that cookie;
       // an in-place router invalidation can race the browser committing it.
+      window.location.replace("/");
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleDevSignIn() {
+    setPending(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const result = await signInAsDev();
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
       window.location.replace("/");
     } catch {
       setError("Something went wrong. Please try again.");
@@ -132,6 +152,19 @@ function LoginPage() {
             {pending ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </Button>
         </form>
+
+        {/* Only under `bun run local` — see lib/auth/dev-login.ts for the two gates. */}
+        {import.meta.env.DEV && localDev?.devLogin ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={pending}
+            className="mt-3 w-full"
+            onClick={handleDevSignIn}
+          >
+            Sign in as dev
+          </Button>
+        ) : null}
 
         {/*
           Signup is closed, not removed — see lib/auth/signup-policy.ts. With the flag
