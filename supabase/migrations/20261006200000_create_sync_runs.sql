@@ -13,6 +13,8 @@ create table public.sync_runs (
     check (source in ('hevy'))
 );
 
+-- No separate user_id index: the primary key (user_id, source) already leads with it.
+
 alter table public.sync_runs enable row level security;
 
 -- Anonymous visitors cannot touch sync state. The worker signs in as the app

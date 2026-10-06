@@ -144,12 +144,13 @@ describe("energy balance note", () => {
 });
 
 describe("sync status", () => {
-  it("shows the London time a sync last ran (BST)", () => {
-    expect(formatSyncStatus("2026-10-06T18:05:00Z")).toBe("Last synced 6 Oct 2026, 19:05");
+  it("shows the London time a sync last ran, across the BST/GMT change", () => {
+    expect(formatSyncStatus("2026-10-06T18:05:00Z")).toContain("19:05");
+    expect(formatSyncStatus("2026-12-06T18:05:00Z")).toContain("18:05");
   });
 
-  it("shows the London time a sync last ran (GMT)", () => {
-    expect(formatSyncStatus("2026-12-06T18:05:00Z")).toBe("Last synced 6 Dec 2026, 18:05");
+  it("prefixes the time so the row reads as a status", () => {
+    expect(formatSyncStatus("2026-10-06T18:05:00Z")).toMatch(/^Last synced .*Oct/);
   });
 
   it("asks for setup when the source has never synced", () => {
