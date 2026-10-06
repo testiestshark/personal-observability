@@ -84,7 +84,7 @@ because the worker signs in again at the start of every run.
 ## Future jobs on Railway
 
 The same project can host other small ingestion services later—for example
-GitHub contribution ingestion, Hevy workout polling, scheduled aggregation,
+GitHub contribution ingestion, Hevy workout polling (see [RAILWAY_HEVY.md](RAILWAY_HEVY.md)), scheduled aggregation,
 data-quality checks, and notification workers. Give each integration its own
 service, least-privilege credentials, schedule, and volume only where persistent
 state is actually required. The main web app can remain hosted separately.
