@@ -49,7 +49,9 @@ TanStack Start (React 19) + Vite, Tailwind v4, Supabase (Postgres/Auth/Storage).
 
 ```
 bun install       # install dependencies
-bun run dev       # start dev server (restart after changing env vars)
+bun run local     # see this worktree locally: Supabase, data, dev sign-in, phone URL
+bun run local:pull    # replace local data with a copy of hosted
+bun run dev       # plain dev server, as the Lovable sandbox runs it
 bun run build     # production build
 bun run lint      # eslint
 bun run typecheck # tsc --noEmit
@@ -94,7 +96,7 @@ The generated files in `src/integrations/supabase/` (`client.ts`, `auth-middlewa
 ## Environment & Supabase
 
 - Copy `.env.example` to `.env.local` and fill in real values — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the local-vs-hosted Supabase model and secrets policy.
-- Local dev points the frontend at local Supabase (`bunx supabase start`); the hosted Lovable deployment continues to use hosted Supabase.
+- Local dev points the frontend at local Supabase (`bun run local` starts it); the hosted Lovable deployment continues to use hosted Supabase.
 - Never put real credentials in `.env` or `.env.example` — only `.env.local` (gitignored).
 - `SUPABASE_SERVICE_ROLE_KEY` / `client.server.ts` bypass RLS — server-side only, never reference it with a `VITE_` prefix.
 
@@ -129,7 +131,9 @@ git worktree add .claude/worktrees/short-description -b feature/short-descriptio
 
 Worktrees always live under `.claude/worktrees/` (gitignored). Do all edits, `bun install`, and commands from inside the worktree. When the PR is merged, `git worktree remove .claude/worktrees/short-description`.
 
-**For an ordinary feature:** in that worktree, develop and test with `bun run dev`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
+**After any change the owner can see in the app,** finish by running `bun run local` from that worktree, leave it running, and end your final message with the phone address from its banner. The owner should see every change locally before it reaches Lovable — see [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md).
+
+**For an ordinary feature:** in that worktree, develop and test with `bun run local`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
 
 **For a database change:**
 

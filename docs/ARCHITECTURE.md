@@ -59,9 +59,9 @@ Detailed planned designs:
 Two independent Supabase projects exist:
 
 - **Hosted** — used by the Lovable-deployed app. Lovable commits changes straight to this repo's `main` branch; pushes to `main` sync back into the Lovable editor. The hosted Supabase project is the one referenced by the (removed-from-git) original `.env` values and `supabase/config.toml`'s linked `project_id`.
-- **Local** — used only for local development, run via `bunx supabase start` (Docker). Local Postgres/Auth/API are ephemeral per machine and start empty (no seed data assumed yet).
+- **Local** — used only for local development, run via `bunx supabase start` (Docker). Local Postgres/Auth/API are ephemeral per machine. `bun run local` starts the stack, creates the dev account and fills an empty database with a copy of the hosted data — see [LOCAL_DEV.md](LOCAL_DEV.md).
 
-Local frontend always talks to local Supabase; local development never talks to the hosted project. The relationship is:
+Local frontend always talks to local Supabase; the running app never talks to the hosted project. The one crossing is `bun run local:pull`, a script that reads hosted data through the Supabase CLI and loads it into the local database. The relationship is:
 
 ```
 Local frontend → local Supabase API (127.0.0.1:54321) → local Postgres (127.0.0.1:54322)
