@@ -15,6 +15,7 @@ from hevy_sync import (
     configuration,
     hevy_api_key,
     plan_operations,
+    run_sync,
     session_for_sync,
     sync_since,
     validate_railway_volume,
@@ -455,6 +456,106 @@ class DeleteActivityTests(unittest.TestCase):
             parse_qs(url.query),
             {"source": ["eq.hevy"], "external_id": ["eq.w1"], "user_id": ["eq.user-1"]},
         )
+
+
+class RecordSyncRunTests(unittest.TestCase):
+    def test_upserts_the_owners_hevy_heartbeat(self) -> None:
+        requests = []
+
+        def open_url(request, timeout):
+            requests.append(request)
+            return FakeResponse(b"")
+
+        supabase = SupabaseSession("http://db", "pub", Path("/tmp/s.json"))
+        session = {"access_token": "tok", "user": {"id": "user-1"}}
+        with patch("hevy_sync.urlopen", open_url):
+            supabase.record_sync_run(SYNCED_AT, session)
+
+        [request] = requests
+        self.assertEqual(request.get_method(), "POST")
+        url = urlsplit(request.full_url)
+        self.assertEqual(url.path, "/rest/v1/sync_runs")
+        self.assertEqual(parse_qs(url.query), {"on_conflict": ["user_id,source"]})
+        self.assertEqual(
+            json.loads(request.data),
+            {"user_id": "user-1", "source": "hevy", "last_succeeded_at": SYNCED_AT},
+        )
+        self.assertIn("merge-duplicates", request.get_header("Prefer"))
+
+
+class RunSyncTests(unittest.TestCase):
+    NOW = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
+    SESSION = {"access_token": "tok", "user": {"id": "user-1"}}
+
+    class FakeHevy:
+        def __init__(self, events=None, error=None) -> None:
+            self.events = events or []
+            self.error = error
+
+        def workout_events(self, since: str) -> list:
+            if self.error:
+                raise self.error
+            return self.events
+
+    class FakeSupabase:
+        def __init__(self, fail_on=None) -> None:
+            self.calls = []
+            self.fail_on = fail_on
+
+        def _call(self, name: str, *args) -> None:
+            self.calls.append((name, *args))
+            if self.fail_on == name:
+                raise SyncError(f"{name} failed")
+
+        def replace_workout(self, row, session) -> None:
+            self._call("replace", row["external_id"])
+
+        def delete_activity(self, external_id, session) -> None:
+            self._call("delete", external_id)
+
+        def record_sync_run(self, succeeded_at, session) -> None:
+            self._call("record", succeeded_at)
+
+    def events(self):
+        return [
+            {"type": "deleted", "id": "gone"},
+            {"type": "updated", "workout": workout()},
+        ]
+
+    def test_records_the_heartbeat_once_after_every_operation(self) -> None:
+        supabase = self.FakeSupabase()
+        run_sync(supabase, self.FakeHevy(self.events()), self.SESSION, self.NOW)
+
+        names = [call[0] for call in supabase.calls]
+        self.assertEqual(names[-1], "record")
+        self.assertEqual(names.count("record"), 1)
+        self.assertEqual(supabase.calls[-1][1], self.NOW.isoformat())
+
+    def test_a_quiet_week_still_records_the_heartbeat(self) -> None:
+        supabase = self.FakeSupabase()
+        run_sync(supabase, self.FakeHevy([]), self.SESSION, self.NOW)
+
+        self.assertEqual(supabase.calls[-1], ("record", self.NOW.isoformat()))
+        self.assertNotIn("delete", [call[0] for call in supabase.calls])
+
+    def test_a_hevy_failure_leaves_the_heartbeat_alone(self) -> None:
+        supabase = self.FakeSupabase()
+        hevy = self.FakeHevy(error=SyncError("Hevy request failed (401)"))
+        with self.assertRaises(SyncError):
+            run_sync(supabase, hevy, self.SESSION, self.NOW)
+
+        self.assertEqual(supabase.calls, [])
+
+    def test_a_failed_write_still_stores_the_rest_but_leaves_the_heartbeat_alone(self) -> None:
+        for failing in ("replace", "delete"):
+            with self.subTest(failing=failing):
+                supabase = self.FakeSupabase(fail_on=failing)
+                with self.assertRaises(SyncError):
+                    run_sync(supabase, self.FakeHevy(self.events()), self.SESSION, self.NOW)
+
+                names = [call[0] for call in supabase.calls]
+                self.assertNotIn("record", names)
+                self.assertEqual(sorted(names), ["delete", "replace"])
 
 
 class HevyApiKeyTests(unittest.TestCase):

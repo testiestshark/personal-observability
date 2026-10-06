@@ -120,3 +120,18 @@ export const getGarminSyncStatus = createServerFn({ method: "GET" }).handler(
     return row ? { latestDay: row.day, lastSyncedAt: row.synced_at } : null;
   },
 );
+
+export const getHevySyncStatus = createServerFn({ method: "GET" }).handler(
+  async (): Promise<{ lastSyncedAt: string } | null> => {
+    const { supabase, userId } = await requireUser();
+    const { data: row, error } = await supabase
+      .from("sync_runs")
+      .select("last_succeeded_at")
+      .eq("user_id", userId)
+      .eq("source", "hevy")
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    return row ? { lastSyncedAt: row.last_succeeded_at } : null;
+  },
+);
