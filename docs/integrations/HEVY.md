@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30) and exercises and sets stored (2026-10-06), local only / Deletions, backfill and Railway deployment not yet built**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises and sets stored (#37), local only / Backfill and Railway deployment not yet built**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
@@ -65,7 +65,9 @@ transaction it upserts the fitness activity (keeping its id), deletes its exerci
 snapshot of what Hevy holds and a payload that fails partway changes nothing. The
 function is `security invoker` and executable by `authenticated` only; the owner is
 always `auth.uid()`. A bad workout is reported and the rest are still written, but
-the run exits non-zero. `deleted` events are not written yet. With local Supabase
+the run exits non-zero. `deleted` events hard-delete the fitness activity (a missing
+row is not an error), and operations run oldest first, so the newest event for a
+workout wins. With local Supabase
 running and `HEVY_API_KEY` in `.env.local`:
 
 ```powershell

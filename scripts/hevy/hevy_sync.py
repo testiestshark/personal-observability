@@ -208,31 +208,48 @@ def _fitness_activity(
     }
 
 
-def plan_fitness_activities(
+def plan_operations(
     events: Any, user_id: str, synced_at: str
 ) -> list[dict[str, Any]]:
-    """Turn Hevy workout events into replace-workout payloads, one per workout.
+    """Turn Hevy workout events into ordered write operations.
 
-    Each row is the fitness activity plus its nested `exercises` and `sets`;
-    the database replaces them as one unit.
+    A `replace` operation's activity is the fitness activity plus its nested
+    `exercises` and `sets`; the database replaces them as one unit.
 
-    Hevy lists events newest first, so they are applied oldest first and the
-    newest state of a workout wins if paging repeats it. The local day is the
-    London calendar day of `start_time`, never `created_at`: most of the history
-    shares one bulk-import creation time. Deleted events are not handled yet.
+    Hevy lists events newest first, so they are applied oldest first: a delete
+    after an update wins, and so does an update after a delete. A workout that
+    repeats keeps only its latest operation. An `updated` event becomes
+    `{"op": "replace", "activity": row}` and a `deleted` event becomes
+    `{"op": "delete", "external_id": id}`. The local day is the London calendar
+    day of `start_time`, never `created_at`: most of the history shares one
+    bulk-import creation time.
     """
     if not isinstance(events, list):
         raise SyncError("Hevy returned an unexpected workout events response.")
 
-    rows_by_id: dict[str, dict[str, Any]] = {}
+    latest: dict[str, dict[str, Any]] = {}
     for event in reversed(events):
-        if not isinstance(event, dict) or event.get("type") != "updated":
+        if not isinstance(event, dict):
             continue
-        row = _fitness_activity(event.get("workout"), user_id, synced_at)
-        if row:
-            rows_by_id[row["external_id"]] = row
+        if event.get("type") == "updated":
+            row = _fitness_activity(event.get("workout"), user_id, synced_at)
+            if row:
+                operation = {"op": "replace", "activity": row}
+                external_id = row["external_id"]
+            else:
+                continue
+        elif event.get("type") == "deleted":
+            external_id = _text(event.get("id"))
+            if not external_id:
+                continue
+            operation = {"op": "delete", "external_id": external_id}
+        else:
+            continue
+        # Re-insert so the surviving operation sits at its own event's position.
+        latest.pop(external_id, None)
+        latest[external_id] = operation
 
-    return sorted(rows_by_id.values(), key=lambda row: row["started_at"])
+    return list(latest.values())
 
 
 class HevyClient:
@@ -407,11 +424,39 @@ class SupabaseSession:
         self._save(refreshed)
         return refreshed
 
-    def replace_workout(self, row: dict[str, Any], session: dict[str, Any]) -> None:
-        """Store one workout, its exercises and its sets in a single transaction."""
+    def _access_token(self, session: dict[str, Any]) -> str:
         access_token = session.get("access_token")
         if not isinstance(access_token, str) or not access_token:
             raise SyncError("The cached app access token is missing. Run setup again.")
+        return access_token
+
+    def delete_activity(self, external_id: str, session: dict[str, Any]) -> None:
+        """Hard-delete one Hevy workout. Exercises and sets cascade; a missing row is fine."""
+        query = urlencode(
+            {
+                "source": f"eq.{SOURCE}",
+                "external_id": f"eq.{external_id}",
+                "user_id": f"eq.{self._user_id(session)}",
+            }
+        )
+        self._request(
+            "DELETE",
+            f"/rest/v1/fitness_activities?{query}",
+            access_token=self._access_token(session),
+            extra_headers={"Prefer": "return=minimal"},
+        )
+
+    @staticmethod
+    def _user_id(session: dict[str, Any]) -> str:
+        user = session.get("user")
+        user_id = user.get("id") if isinstance(user, dict) else None
+        if not isinstance(user_id, str) or not user_id:
+            raise SyncError("The cached app session has no user id. Run setup again.")
+        return user_id
+
+    def replace_workout(self, row: dict[str, Any], session: dict[str, Any]) -> None:
+        """Store one workout, its exercises and its sets in a single transaction."""
+        access_token = self._access_token(session)
         self._request(
             "POST",
             "/rest/v1/rpc/replace_fitness_workout",
@@ -480,15 +525,25 @@ def sync() -> None:
 
     now = datetime.now(timezone.utc)
     events = hevy.workout_events(sync_since(now))
-    rows = plan_fitness_activities(events, user_id, now.isoformat())
+    operations = plan_operations(events, user_id, now.isoformat())
+    replaced = deleted = 0
     failures: list[str] = []
-    for row in rows:
+    for operation in operations:
         try:
-            supabase.replace_workout(row, session)
+            if operation["op"] == "replace":
+                supabase.replace_workout(operation["activity"], session)
+                replaced += 1
+            else:
+                supabase.delete_activity(operation["external_id"], session)
+                deleted += 1
         except SyncError as error:
             # One bad workout must not hold back the rest; the run still fails.
-            failures.append(f"workout {row['external_id']}: {error}")
-    print(f"Synced {len(rows) - len(failures)} of {len(rows)} Hevy workout(s) from {len(events)} event(s).")
+            external_id = operation.get("external_id") or operation["activity"]["external_id"]
+            failures.append(f"workout {external_id}: {error}")
+    print(
+        f"Synced {replaced} Hevy workout(s) and removed {deleted} "
+        f"from {len(events)} event(s)."
+    )
     if failures:
         raise SyncError("Some workouts were not stored.\n" + "\n".join(failures))
 

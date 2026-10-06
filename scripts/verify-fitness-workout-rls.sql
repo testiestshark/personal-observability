@@ -112,7 +112,7 @@ begin
   if (select count(*) from public.fitness_exercises where fitness_activity_id = owner_activity) <> 1 then
     raise exception 'replacing a workout kept its old exercises';
   end if;
-  if (select count(*) from public.fitness_sets where user_id = owner_id) <> 1 then
+  if (select count(*) from public.fitness_sets s join public.fitness_exercises e on e.id = s.fitness_exercise_id where e.fitness_activity_id = owner_activity) <> 1 then
     raise exception 'replacing a workout kept its old sets';
   end if;
 
@@ -135,7 +135,7 @@ begin
   end;
 
   if (select count(*) from public.fitness_exercises where fitness_activity_id = owner_activity) <> 2
-     or (select count(*) from public.fitness_sets where user_id = owner_id) <> 3 then
+     or (select count(*) from public.fitness_sets s join public.fitness_exercises e on e.id = s.fitness_exercise_id where e.fitness_activity_id = owner_activity) <> 3 then
     raise exception 'a failed replace did not leave the previous exercises and sets intact';
   end if;
   if (select activity_name from public.fitness_activities where id = owner_activity) <> 'RLS test' then
@@ -221,7 +221,7 @@ begin
     true
   );
   if (select count(*) from public.fitness_exercises where fitness_activity_id = owner_activity) <> 2
-     or (select count(*) from public.fitness_sets where user_id = owner_id) <> 3 then
+     or (select count(*) from public.fitness_sets s join public.fitness_exercises e on e.id = s.fitness_exercise_id where e.fitness_activity_id = owner_activity) <> 3 then
     raise exception 'second user calling the function changed the first user exercises or sets';
   end if;
 end

@@ -14,7 +14,7 @@ from hevy_sync import (
     app_environment,
     configuration,
     hevy_api_key,
-    plan_fitness_activities,
+    plan_operations,
     session_for_sync,
     sync_since,
     validate_railway_volume,
@@ -78,11 +78,20 @@ def updated(**overrides):
     return {"type": "updated", "workout": workout(**overrides)}
 
 
+def deleted(workout_id="gone", deleted_at="2026-09-29T10:00:00.000Z"):
+    return {"type": "deleted", "id": workout_id, "deleted_at": deleted_at}
+
+
+def operations(events):
+    return plan_operations(events, "user-1", SYNCED_AT)
+
+
 def plan(events):
-    return plan_fitness_activities(events, "user-1", SYNCED_AT)
+    """The fitness activity rows of the planned replace operations."""
+    return [op["activity"] for op in operations(events) if op["op"] == "replace"]
 
 
-class PlanFitnessActivitiesTests(unittest.TestCase):
+class PlanOperationsTests(unittest.TestCase):
     def test_turns_an_updated_event_into_a_fitness_activity(self) -> None:
         [row] = plan([updated()])
 
@@ -99,10 +108,6 @@ class PlanFitnessActivitiesTests(unittest.TestCase):
 
     def test_an_empty_event_list_plans_nothing(self) -> None:
         self.assertEqual(plan([]), [])
-
-    def test_ignores_deleted_events_for_now(self) -> None:
-        events = [{"type": "deleted", "id": "gone", "deleted_at": "2026-09-29T10:00:00.000Z"}]
-        self.assertEqual(plan(events), [])
 
     def test_started_at_is_utc(self) -> None:
         [row] = plan([updated(start_time="2026-09-29T17:02:11+00:00")])
@@ -162,12 +167,49 @@ class PlanFitnessActivitiesTests(unittest.TestCase):
         rows = plan([updated(title="Newer"), updated(title="Older")])
         self.assertEqual([row["activity_name"] for row in rows], ["Newer"])
 
-    def test_orders_rows_oldest_first(self) -> None:
-        rows = plan([
-            updated(id="newer", start_time="2026-09-29T17:00:00+00:00"),
-            updated(id="older", start_time="2026-09-27T17:00:00+00:00"),
+    def test_orders_operations_oldest_first(self) -> None:
+        # The API lists events newest first.
+        ops = operations([
+            updated(id="newer"),
+            deleted("middle"),
+            updated(id="older"),
         ])
-        self.assertEqual([row["external_id"] for row in rows], ["older", "newer"])
+        self.assertEqual(
+            [(op["op"], op.get("external_id") or op["activity"]["external_id"]) for op in ops],
+            [("replace", "older"), ("delete", "middle"), ("replace", "newer")],
+        )
+
+
+class DeletionTests(unittest.TestCase):
+    def test_a_delete_only_window_plans_delete_operations_by_workout_id(self) -> None:
+        ops = operations([deleted("b"), deleted("a")])
+        self.assertEqual(
+            ops,
+            [{"op": "delete", "external_id": "a"}, {"op": "delete", "external_id": "b"}],
+        )
+
+    def test_a_delete_after_an_update_wins(self) -> None:
+        # Newest first: the delete is the later event.
+        ops = operations([deleted("w1"), updated(id="w1")])
+        self.assertEqual(ops, [{"op": "delete", "external_id": "w1"}])
+
+    def test_an_update_after_a_delete_wins(self) -> None:
+        ops = operations([updated(id="w1", title="Back"), deleted("w1")])
+        self.assertEqual([op["op"] for op in ops], ["replace"])
+        self.assertEqual(ops[0]["activity"]["activity_name"], "Back")
+
+    def test_a_delete_of_an_unknown_id_is_still_planned(self) -> None:
+        # The worker treats a missing row as success.
+        self.assertEqual(
+            operations([deleted("never-synced")]),
+            [{"op": "delete", "external_id": "never-synced"}],
+        )
+
+    def test_skips_a_deleted_event_without_an_id(self) -> None:
+        self.assertEqual(operations([{"type": "deleted"}, {"type": "deleted", "id": " "}]), [])
+
+    def test_ignores_unknown_event_types(self) -> None:
+        self.assertEqual(operations([{"type": "mystery", "id": "x"}]), [])
 
 
 class PlanExercisesAndSetsTests(unittest.TestCase):
@@ -390,6 +432,29 @@ class HevyClientTests(unittest.TestCase):
 
         with self.assertRaises(SyncError):
             HevyClient("k", open_url=open_url).workout_events("x")
+
+
+class DeleteActivityTests(unittest.TestCase):
+    def test_deletes_by_owner_source_and_external_id(self) -> None:
+        requests = []
+
+        def open_url(request, timeout):
+            requests.append(request)
+            return FakeResponse(b"")
+
+        supabase = SupabaseSession("http://db", "pub", Path("/tmp/s.json"))
+        session = {"access_token": "tok", "user": {"id": "user-1"}}
+        with patch("hevy_sync.urlopen", open_url):
+            supabase.delete_activity("w1", session)
+
+        [request] = requests
+        self.assertEqual(request.get_method(), "DELETE")
+        url = urlsplit(request.full_url)
+        self.assertEqual(url.path, "/rest/v1/fitness_activities")
+        self.assertEqual(
+            parse_qs(url.query),
+            {"source": ["eq.hevy"], "external_id": ["eq.w1"], "user_id": ["eq.user-1"]},
+        )
 
 
 class HevyApiKeyTests(unittest.TestCase):
