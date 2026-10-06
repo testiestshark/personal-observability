@@ -19,9 +19,10 @@ dist-ssr
 # Test coverage output (bun run test:coverage)
 coverage
 
-# Local Garmin and Supabase session tokens used by the scheduled sync worker.
+# Local Garmin/Hevy and Supabase session tokens used by the scheduled sync workers.
 # These are bearer credentials and must never be committed.
 .garmin-sync/
+.hevy-sync/
 
 # Environment variables (real credentials — use .env.example for the template)
 .env
@@ -56,3 +57,6 @@ src/routeTree.gen.ts
 
 # Agent worktrees (see CLAUDE.md, Operating rules)
 .claude/worktrees/
+
+# Python bytecode from running the sync workers and their tests.
+__pycache__/
