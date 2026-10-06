@@ -4,13 +4,14 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlsplit
 
 from hevy_sync import (
     HevyClient,
     SupabaseSession,
     SyncError,
+    apply_operations,
     app_environment,
     configuration,
     hevy_api_key,
@@ -365,6 +366,62 @@ class SyncSinceTests(unittest.TestCase):
         self.assertEqual(sync_since(now), "2026-09-23T12:34:56Z")
 
 
+class ApplyOperationsTests(unittest.TestCase):
+    def test_applies_replaces_and_deletes_and_counts_them(self) -> None:
+        calls = []
+
+        class Fake:
+            def replace_workout(self, row, session):
+                calls.append(("replace", row["external_id"]))
+
+            def delete_activity(self, external_id, session):
+                calls.append(("delete", external_id))
+
+        operations = [
+            {"op": "replace", "activity": {"external_id": "a"}},
+            {"op": "delete", "external_id": "b"},
+        ]
+        result = apply_operations(Fake(), {}, operations)
+
+        self.assertEqual(calls, [("replace", "a"), ("delete", "b")])
+        self.assertEqual((result.replaced, result.deleted, result.failures), (1, 1, []))
+
+    def test_one_failure_does_not_stop_the_rest(self) -> None:
+        calls = []
+
+        class Fake:
+            def replace_workout(self, row, session):
+                if row["external_id"] == "a":
+                    raise SyncError("boom")
+                calls.append(row["external_id"])
+
+        operations = [
+            {"op": "replace", "activity": {"external_id": "a"}},
+            {"op": "replace", "activity": {"external_id": "b"}},
+        ]
+        result = apply_operations(Fake(), {}, operations)
+
+        self.assertEqual(calls, ["b"])
+        self.assertEqual(result.replaced, 1)
+        self.assertEqual(result.failures, ["workout a: boom"])
+        with self.assertRaises(SyncError):
+            result.raise_for_failures()
+
+    def test_progress_is_counts_only(self) -> None:
+        class Fake:
+            def replace_workout(self, row, session):
+                pass
+
+        lines = []
+        operations = [
+            {"op": "replace", "activity": {"external_id": str(i), "activity_name": "Secret"}}
+            for i in range(3)
+        ]
+        apply_operations(Fake(), {}, operations, progress=lines.append, every=2)
+
+        self.assertEqual(lines, ["Wrote 2 of 3 workout(s).", "Wrote 3 of 3 workout(s)."])
+
+
 class FakeResponse(io.BytesIO):
     def __enter__(self):
         return self
@@ -401,6 +458,40 @@ class HevyClientTests(unittest.TestCase):
             query = parse_qs(url.query)
             self.assertEqual(query["since"], ["2026-09-23T12:00:00Z"])
             self.assertEqual(query["pageSize"], ["10"])
+
+    def test_reports_each_page_read_to_the_progress_callback(self) -> None:
+        pages = {
+            "1": {"page": 1, "page_count": 2, "events": [updated(id="a")]},
+            "2": {"page": 2, "page_count": 2, "events": [updated(id="b")]},
+        }
+
+        def open_url(request, timeout):
+            query = parse_qs(urlsplit(request.full_url).query)
+            return FakeResponse(json.dumps(pages[query["page"][0]]).encode())
+
+        seen = []
+        HevyClient("k", open_url=open_url).workout_events(
+            "x", on_page=lambda page, page_count: seen.append((page, page_count))
+        )
+        self.assertEqual(seen, [(1, 2), (2, 2)])
+
+    def test_reads_the_workout_count_with_get(self) -> None:
+        requests = []
+
+        def open_url(request, timeout):
+            requests.append(request)
+            return FakeResponse(b'{"workout_count": 487}')
+
+        self.assertEqual(HevyClient("k", open_url=open_url).workout_count(), 487)
+        self.assertEqual(urlsplit(requests[0].full_url).path, "/v1/workouts/count")
+        self.assertEqual(requests[0].get_method(), "GET")
+
+    def test_rejects_an_unexpected_count_response(self) -> None:
+        def open_url(request, timeout):
+            return FakeResponse(b'{"workout_count": "many"}')
+
+        with self.assertRaises(SyncError):
+            HevyClient("k", open_url=open_url).workout_count()
 
     def test_stops_after_one_request_when_there_are_no_events(self) -> None:
         calls = []
@@ -457,6 +548,56 @@ class DeleteActivityTests(unittest.TestCase):
             {"source": ["eq.hevy"], "external_id": ["eq.w1"], "user_id": ["eq.user-1"]},
         )
 
+
+class SupabaseRetryTests(unittest.TestCase):
+    """A full backfill makes ~500 requests; a single dropped connection must not fail one."""
+
+    def setUp(self) -> None:
+        self.session = SupabaseSession("http://db", "pub", Path("/tmp/s.json"))
+        sleeper = patch("hevy_sync.time.sleep")
+        self.sleep = sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def test_retries_a_dropped_connection_then_succeeds(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            if len(attempts) < 3:
+                raise URLError(OSError(101, "Network is unreachable"))
+            return FakeResponse(b'"ok"')
+
+        with patch("hevy_sync.urlopen", open_url):
+            self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 3)
+        self.assertEqual(self.sleep.call_count, 2)
+
+    def test_gives_up_after_a_few_attempts(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            raise URLError(OSError(101, "Network is unreachable"))
+
+        with patch("hevy_sync.urlopen", open_url):
+            with self.assertRaisesRegex(SyncError, "Could not reach Supabase"):
+                self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 4)
+
+    def test_does_not_retry_a_rejected_request(self) -> None:
+        attempts = []
+
+        def open_url(request, timeout):
+            attempts.append(request)
+            raise HTTPError(request.full_url, 400, "Bad", {}, io.BytesIO(b"{}"))
+
+        with patch("hevy_sync.urlopen", open_url):
+            with self.assertRaises(SyncError):
+                self.session.replace_workout({"external_id": "w"}, {"access_token": "t"})
+
+        self.assertEqual(len(attempts), 1)
 
 class RecordSyncRunTests(unittest.TestCase):
     def test_upserts_the_owners_hevy_heartbeat(self) -> None:

@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises and sets stored (#37), local only / Backfill and Railway deployment not yet built**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises and sets stored (#37), local only / Backfill built (#39), local only / Railway deployment not yet built**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
@@ -74,6 +74,7 @@ running and `HEVY_API_KEY` in `.env.local`:
 ```powershell
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync setup
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync sync
+docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync backfill
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync test
 ```
 
@@ -87,6 +88,12 @@ nothing of the first account's. `scripts/verify-sync-runs-rls.sql` does the same
 ```powershell
 Get-Content scripts/verify-sync-runs-rls.sql | docker exec -i supabase_db_personal_observability psql -U postgres -v ON_ERROR_STOP=1
 ```
+
+`backfill` reads `events?since=1970-01-01T00:00:00Z` across every page and applies
+the events with the same planner and writes as `sync`, so rerunning it (or running
+`sync` afterwards) leaves the data unchanged. It prints Hevy's `/v1/workouts/count`
+first, then page and write progress as counts only; compare that count with
+`select count(*) from fitness_activities where source = 'hevy'`.
 
 `setup` signs in to the app once and keeps the session in `.hevy-sync/`
 (gitignored), separate from the Garmin worker's. Railway variables are listed in

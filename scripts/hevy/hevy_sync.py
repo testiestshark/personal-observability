@@ -16,6 +16,7 @@ import stat
 import sys
 import time
 import unittest
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -31,6 +32,10 @@ ACTIVITY_TYPE = "strength_training"
 HEVY_BASE_URL = "https://api.hevyapp.com"
 PAGE_SIZE = 10
 SYNC_WINDOW = timedelta(days=7)
+BACKFILL_SINCE = "1970-01-01T00:00:00Z"
+PROGRESS_EVERY = 50
+CONNECTION_ATTEMPTS = 4
+CONNECTION_BACKOFF_SECONDS = 1
 LONDON = ZoneInfo("Europe/London")
 
 
@@ -291,7 +296,17 @@ class HevyClient:
         except json.JSONDecodeError:
             raise SyncError("Hevy returned a response that is not JSON.") from None
 
-    def workout_events(self, since: str) -> list[Any]:
+    def workout_count(self) -> int:
+        """Hevy's total number of workouts."""
+        body = self._get("/v1/workouts/count", {})
+        count = body.get("workout_count") if isinstance(body, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            raise SyncError("Hevy returned an unexpected workout count.")
+        return count
+
+    def workout_events(
+        self, since: str, on_page: Callable[[int, int], None] | None = None
+    ) -> list[Any]:
         """Read every page of workout events updated or deleted since `since`."""
         events: list[Any] = []
         page = 1
@@ -309,6 +324,8 @@ class HevyClient:
             ):
                 raise SyncError("Hevy returned an unexpected workout events page.")
             events.extend(page_events)
+            if on_page:
+                on_page(page, page_count)
             if page >= page_count:
                 return events
             page += 1
@@ -360,19 +377,26 @@ class SupabaseSession:
             headers.update(extra_headers)
 
         request = Request(f"{self.base_url}{path}", data=body, headers=headers, method=method)
-        try:
-            with urlopen(request, timeout=30) as response:
-                raw = response.read()
-        except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
+        # Connection-level failures are retried: Docker Desktop's host gateway drops the
+        # odd connection, and a full backfill makes ~500 requests. Every call here is
+        # idempotent, and an HTTP error response is a real answer, never retried.
+        for attempt in range(CONNECTION_ATTEMPTS):
             try:
-                parsed = json.loads(detail)
-                detail = parsed.get("message") or parsed.get("msg") or parsed.get("error_description") or detail
-            except json.JSONDecodeError:
-                pass
-            raise SyncError(f"Supabase request failed ({error.code}): {detail}") from error
-        except URLError as error:
-            raise SyncError(f"Could not reach Supabase at {self.base_url}: {error.reason}") from error
+                with urlopen(request, timeout=30) as response:
+                    raw = response.read()
+                break
+            except HTTPError as error:
+                detail = error.read().decode("utf-8", errors="replace")
+                try:
+                    parsed = json.loads(detail)
+                    detail = parsed.get("message") or parsed.get("msg") or parsed.get("error_description") or detail
+                except json.JSONDecodeError:
+                    pass
+                raise SyncError(f"Supabase request failed ({error.code}): {detail}") from error
+            except URLError as error:
+                if attempt == CONNECTION_ATTEMPTS - 1:
+                    raise SyncError(f"Could not reach Supabase at {self.base_url}: {error.reason}") from error
+                time.sleep(CONNECTION_BACKOFF_SECONDS * (attempt + 1))
 
         return json.loads(raw) if raw else None
 
@@ -528,6 +552,42 @@ def setup() -> None:
     print(f"Hevy API key: {key_state}.")
 
 
+@dataclass
+class ApplyResult:
+    replaced: int = 0
+    deleted: int = 0
+    failures: list[str] = field(default_factory=list)
+
+    def raise_for_failures(self) -> None:
+        if self.failures:
+            raise SyncError("Some workouts were not stored.\n" + "\n".join(self.failures))
+
+
+def apply_operations(
+    supabase: Any,
+    session: dict[str, Any],
+    operations: list[dict[str, Any]],
+    progress: Callable[[str], None] | None = None,
+    every: int = PROGRESS_EVERY,
+) -> ApplyResult:
+    """Write planned operations in order. One bad workout must not hold back the rest."""
+    result = ApplyResult()
+    for done, operation in enumerate(operations, start=1):
+        try:
+            if operation["op"] == "replace":
+                supabase.replace_workout(operation["activity"], session)
+                result.replaced += 1
+            else:
+                supabase.delete_activity(operation["external_id"], session)
+                result.deleted += 1
+        except SyncError as error:
+            external_id = operation.get("external_id") or operation["activity"]["external_id"]
+            result.failures.append(f"workout {external_id}: {error}")
+        if progress and (done % every == 0 or done == len(operations)):
+            progress(f"Wrote {done} of {len(operations)} workout(s).")
+    return result
+
+
 def run_sync(
     supabase: Any, hevy: Any, session: dict[str, Any], now: datetime
 ) -> None:
@@ -539,28 +599,37 @@ def run_sync(
     user_id = SupabaseSession._user_id(session)
     events = hevy.workout_events(sync_since(now))
     operations = plan_operations(events, user_id, now.isoformat())
-    replaced = deleted = 0
-    failures: list[str] = []
-    for operation in operations:
-        try:
-            if operation["op"] == "replace":
-                supabase.replace_workout(operation["activity"], session)
-                replaced += 1
-            else:
-                supabase.delete_activity(operation["external_id"], session)
-                deleted += 1
-        except SyncError as error:
-            # One bad workout must not hold back the rest; the run still fails.
-            external_id = operation.get("external_id") or operation["activity"]["external_id"]
-            failures.append(f"workout {external_id}: {error}")
-    if not failures:
+    result = apply_operations(supabase, session, operations)
+    if not result.failures:
         supabase.record_sync_run(now.isoformat(), session)
     print(
-        f"Synced {replaced} Hevy workout(s) and removed {deleted} "
+        f"Synced {result.replaced} Hevy workout(s) and removed {result.deleted} "
         f"from {len(events)} event(s)."
     )
-    if failures:
-        raise SyncError("Some workouts were not stored.\n" + "\n".join(failures))
+    result.raise_for_failures()
+
+
+def backfill() -> None:
+    """Load the full Hevy history with the same planner and writes as `sync`; safe to rerun."""
+    supabase = configuration()
+    hevy = HevyClient(hevy_api_key())
+    session = session_for_sync(supabase)
+    user_id = SupabaseSession._user_id(session)
+
+    now = datetime.now(timezone.utc)
+    hevy_total = hevy.workout_count()
+    print(f"Hevy reports {hevy_total} workout(s).")
+    events = hevy.workout_events(
+        BACKFILL_SINCE,
+        on_page=lambda page, count: print(f"Read page {page} of {count}."),
+    )
+    operations = plan_operations(events, user_id, now.isoformat())
+    result = apply_operations(supabase, session, operations, progress=print)
+    print(
+        f"Backfilled {result.replaced} Hevy workout(s) and removed {result.deleted} "
+        f"from {len(events)} event(s); Hevy reports {hevy_total}."
+    )
+    result.raise_for_failures()
 
 
 def sync() -> None:
@@ -577,6 +646,7 @@ def main() -> int:
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("setup", help="Sign in once to the app and store its session.")
     subcommands.add_parser("sync", help="Replace workouts updated in the last 7 days, with their exercises and sets.")
+    subcommands.add_parser("backfill", help="Load the full Hevy history. Safe to rerun.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
     args = parser.parse_args()
 
@@ -585,6 +655,8 @@ def main() -> int:
             setup()
         elif args.command == "sync":
             sync()
+        elif args.command == "backfill":
+            backfill()
         else:
             suite = unittest.defaultTestLoader.discover(
                 str(Path(__file__).parent), pattern="test_hevy_sync.py"
