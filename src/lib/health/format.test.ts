@@ -9,6 +9,7 @@ import {
   formatCalories,
   formatSleep,
   formatSleepWindow,
+  formatSyncStatus,
   formatVo2Max,
   goalProgress,
   isCompleteDay,
@@ -139,5 +140,20 @@ describe("energy balance note", () => {
 
   it("has no note once the balance is shown", () => {
     expect(energyBalanceNote(true, 2_100, 2_600)).toBeUndefined();
+  });
+});
+
+describe("sync status", () => {
+  it("shows the London time a sync last ran (BST)", () => {
+    expect(formatSyncStatus("2026-10-06T18:05:00Z")).toBe("Last synced 6 Oct 2026, 19:05");
+  });
+
+  it("shows the London time a sync last ran (GMT)", () => {
+    expect(formatSyncStatus("2026-12-06T18:05:00Z")).toBe("Last synced 6 Dec 2026, 18:05");
+  });
+
+  it("asks for setup when the source has never synced", () => {
+    expect(formatSyncStatus(null)).toBe("Setup required");
+    expect(formatSyncStatus(undefined)).toBe("Setup required");
   });
 });

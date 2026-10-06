@@ -395,6 +395,20 @@ class SupabaseSession:
             raise SyncError("The cached app session has no user id. Run setup again.")
         return user_id
 
+    def record_sync_run(self, succeeded_at: str, session: dict[str, Any]) -> None:
+        """Stamp this owner's Hevy heartbeat; only a fully successful run calls this."""
+        self._request(
+            "POST",
+            "/rest/v1/sync_runs?" + urlencode({"on_conflict": "user_id,source"}),
+            {
+                "user_id": self._user_id(session),
+                "source": SOURCE,
+                "last_succeeded_at": succeeded_at,
+            },
+            access_token=self._access_token(session),
+            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+
     def upsert_activities(
         self, rows: list[dict[str, Any]], session: dict[str, Any]
     ) -> None:
@@ -460,16 +474,15 @@ def setup() -> None:
     print(f"Hevy API key: {key_state}.")
 
 
-def sync() -> None:
-    supabase = configuration()
-    hevy = HevyClient(hevy_api_key())
-    session = session_for_sync(supabase)
-    user = session.get("user")
-    user_id = user.get("id") if isinstance(user, dict) else None
-    if not isinstance(user_id, str) or not user_id:
-        raise SyncError("The cached app session has no user id. Run setup again.")
+def run_sync(
+    supabase: Any, hevy: Any, session: dict[str, Any], now: datetime
+) -> None:
+    """Apply the last window of Hevy events, then stamp the heartbeat.
 
-    now = datetime.now(timezone.utc)
+    The heartbeat is written only after every operation succeeded, so a failed
+    run (revoked key, lapsed Pro, a rejected write) leaves the time stale.
+    """
+    user_id = SupabaseSession._user_id(session)
     events = hevy.workout_events(sync_since(now))
     operations = plan_operations(events, user_id, now.isoformat())
     replaced = deleted = 0
@@ -485,10 +498,18 @@ def sync() -> None:
         deleted += 1
     supabase.upsert_activities(batch, session)
     replaced += len(batch)
+    supabase.record_sync_run(now.isoformat(), session)
     print(
         f"Synced {replaced} Hevy workout(s) and removed {deleted} "
         f"from {len(events)} event(s)."
     )
+
+
+def sync() -> None:
+    supabase = configuration()
+    hevy = HevyClient(hevy_api_key())
+    session = session_for_sync(supabase)
+    run_sync(supabase, hevy, session, datetime.now(timezone.utc))
 
 
 def main() -> int:
