@@ -17,6 +17,10 @@ import { AppShell } from "../components/app-shell";
 import { DevBadge } from "../components/dev-badge";
 import { getCurrentUser, getLocalDevInfo } from "../lib/auth/auth.functions";
 
+// Asked once and kept: the answer comes from how the dev server was started, not
+// from who is signed in, so it cannot differ between requests or users.
+let localDevInfo: ReturnType<typeof getLocalDevInfo> | undefined;
+
 // Routes reachable without a session. Everything else redirects to /login.
 const PUBLIC_PATHS = new Set(["/login"]);
 
@@ -87,7 +91,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     const user = await getCurrentUser();
     // Dev server only, so the hosted build makes no extra request and the dev
     // sign-in button and branch badge are compiled out of it entirely.
-    const localDev = import.meta.env.DEV ? await getLocalDevInfo() : null;
+    const localDev = import.meta.env.DEV ? await (localDevInfo ??= getLocalDevInfo()) : null;
     const isPublic = PUBLIC_PATHS.has(location.pathname);
 
     if (!user && !isPublic) throw redirect({ to: "/login" });

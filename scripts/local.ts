@@ -2,8 +2,6 @@
 // What it does and why is in docs/LOCAL_DEV.md.
 import { networkInterfaces } from "node:os";
 
-import qrcode from "qrcode-terminal";
-
 import { pickLanAddress, renderBanner } from "../src/lib/local-dev/local-dev";
 import {
   DEV_PASSWORD,
@@ -50,6 +48,10 @@ async function main() {
   freePort();
   const branch = currentBranch();
   const lanAddress = pickLanAddress(networkInterfaces());
+
+  // Imported here, not at the top: on a fresh worktree the package only exists once
+  // ensureDependencies has run.
+  const { default: qrcode } = await import("qrcode-terminal");
 
   const code = await serve(
     { DEV_LOGIN_EMAIL: email, DEV_LOGIN_PASSWORD: DEV_PASSWORD, LOCAL_DEV_BRANCH: branch },

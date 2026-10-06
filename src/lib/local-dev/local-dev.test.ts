@@ -1,8 +1,8 @@
 import {
   isDevProcess,
   isLocalSupabaseUrl,
+  isPlainEmail,
   listeningPid,
-  otherSupabaseProjects,
   parseEnvFile,
   pickLanAddress,
   renderBanner,
@@ -51,29 +51,22 @@ describe("pickLanAddress", () => {
   });
 });
 
-describe("otherSupabaseProjects", () => {
-  it("names each other project once, however many of its containers are up", () => {
-    expect(
-      otherSupabaseProjects(
-        [
-          "supabase_db_cmg_data_platform",
-          "supabase_kong_cmg_data_platform",
-          "supabase_pg_meta_cmg_data_platform",
-          "supabase_db_personal_observability",
-          "supabase_edge_runtime_personal_observability",
-        ],
-        "personal_observability",
-      ),
-    ).toEqual(["cmg_data_platform"]);
+describe("isPlainEmail", () => {
+  it("accepts an ordinary address", () => {
+    expect(isPlainEmail("first.last+tag@example.co.uk")).toBe(true);
   });
 
-  it("leaves containers that are not Supabase stacks alone", () => {
-    expect(
-      otherSupabaseProjects(
-        ["garmin-sync", "postgres", "supabase_unknown"],
-        "personal_observability",
-      ),
-    ).toEqual([]);
+  it("rejects anything that could close a quoted SQL string, since the scripts interpolate it", () => {
+    expect(isPlainEmail("a'; drop table weight_entries; --@example.com")).toBe(false);
+    expect(isPlainEmail('a"b@example.com')).toBe(false);
+    expect(isPlainEmail("a b@example.com")).toBe(false);
+    expect(isPlainEmail("a@example.com\nselect 1")).toBe(false);
+  });
+
+  it("rejects a missing or malformed value", () => {
+    expect(isPlainEmail(undefined)).toBe(false);
+    expect(isPlainEmail("")).toBe(false);
+    expect(isPlainEmail("not-an-email")).toBe(false);
   });
 });
 

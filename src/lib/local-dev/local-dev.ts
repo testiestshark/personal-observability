@@ -25,39 +25,6 @@ export function pickLanAddress(
   return (candidates.find((c) => !c.virtual) ?? candidates[0])?.address ?? null;
 }
 
-// Container names are `supabase_<service>_<project_id>`, and both halves may contain
-// underscores, so the service has to be matched against the known list.
-const SUPABASE_SERVICES = [
-  "edge_runtime",
-  "pg_meta",
-  "analytics",
-  "imgproxy",
-  "inbucket",
-  "realtime",
-  "storage",
-  "studio",
-  "pooler",
-  "vector",
-  "auth",
-  "kong",
-  "rest",
-  "db",
-];
-
-/** Project ids of other local Supabase stacks among the running containers. */
-export function otherSupabaseProjects(containerNames: string[], ownProjectId: string): string[] {
-  const projects = new Set<string>();
-
-  for (const name of containerNames) {
-    const service = SUPABASE_SERVICES.find((s) => name.startsWith(`supabase_${s}_`));
-    if (!service) continue;
-    const project = name.slice(`supabase_${service}_`.length);
-    if (project && project !== ownProjectId) projects.add(project);
-  }
-
-  return [...projects];
-}
-
 export function parseEnvFile(text: string): Record<string, string> {
   const values: Record<string, string> = {};
 
@@ -69,6 +36,14 @@ export function parseEnvFile(text: string): Record<string, string> {
   }
 
   return values;
+}
+
+/**
+ * A plain address with nothing that could break out of a quoted SQL string. The
+ * scripts interpolate the dev email into SQL, so this is their injection guard.
+ */
+export function isPlainEmail(value: string | undefined): value is string {
+  return !!value && /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(value);
 }
 
 /** True only for a Supabase API on this machine — never for the hosted project. */

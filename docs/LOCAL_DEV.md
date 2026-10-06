@@ -12,8 +12,7 @@ and the address (and QR code) for a phone on the same Wi-Fi. On the login page, 
 
 1. Copies `.env.local` from the main checkout if this worktree has none, and runs
    `bun install` if `node_modules` is missing.
-2. Stops any other local Supabase project (they fight over the same ports), then starts
-   this one if it is not already up. Stopping keeps the other project's data.
+2. Starts this project's local Supabase if it is not already up.
 3. Applies migrations this worktree has that the local database lacks. It never resets
    the database.
 4. If the local database has no rows, pulls a copy of the hosted data (see below).

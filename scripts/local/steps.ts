@@ -12,8 +12,8 @@ import { join } from "node:path";
 import {
   isDevProcess,
   isLocalSupabaseUrl,
+  isPlainEmail,
   listeningPid,
-  otherSupabaseProjects,
   parseEnvFile,
 } from "../../src/lib/local-dev/local-dev";
 
@@ -56,6 +56,8 @@ function run(
     stderr: result.stderr ?? (result.error ? String(result.error) : ""),
   };
 }
+
+const lastLines = (text: string) => text.trim().split(/\r?\n/).slice(-3).join("\n");
 
 const supabase = (args: string[], options: Parameters<typeof run>[2] = {}) =>
   run("bun", ["x", "supabase", ...args], options);
@@ -103,7 +105,7 @@ export function devEmail(): string {
   const env = parseEnvFile(readFileSync(".env.local", "utf8"));
   const email = env["DEV_LOGIN_EMAIL"];
   // Interpolated into SQL below, so hold it to a plain address rather than escape it.
-  if (!email || !/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(email)) {
+  if (!isPlainEmail(email)) {
     throw new LocalError(
       "Add DEV_LOGIN_EMAIL=<your email> to .env.local (in the main checkout too, so new worktrees inherit it).",
     );
@@ -119,15 +121,6 @@ function runningContainers(): string[] {
 }
 
 export function startSupabase() {
-  // Two local Supabase stacks fight over the same ports, and the loser comes up
-  // without its database. The owner never needs both at once, so the other yields.
-  for (const project of otherSupabaseProjects(runningContainers(), PROJECT_ID)) {
-    say(`Stopping the other local Supabase project "${project}" (its data is kept).`);
-    if (!supabase(["stop", "--project-id", project], { show: true }).ok) {
-      throw new LocalError(`Could not stop "${project}". Stop it by hand and try again.`);
-    }
-  }
-
   if (runningContainers().includes(DB_CONTAINER)) return;
   say("Starting local Supabase...");
   if (!supabase(["start"], { show: true }).ok) throw new LocalError("supabase start failed.");
@@ -148,7 +141,7 @@ export function applyMigrations() {
     return;
   }
   warn("Could not apply this worktree's migrations; continuing with the database as it is.");
-  warn(detail.trim().split(/\r?\n/).slice(-3).join("\n"));
+  warn(lastLines(detail));
 }
 
 type LocalStack = { apiUrl: string; serviceRoleKey: string };
@@ -227,7 +220,7 @@ function hostedFailure(action: string, result: RunResult): LocalError {
     ? "The Supabase CLI is probably signed in to the wrong account. Run `bunx supabase projects list`: if this project is not listed, run `bunx supabase login` with the account that owns it, or set SUPABASE_ACCESS_TOKEN in .env.local."
     : /not linked|project ref/i.test(detail)
       ? "The main checkout is not linked to the hosted project. Run `bunx supabase link` there."
-      : detail.trim().split(/\r?\n/).slice(-3).join("\n");
+      : lastLines(detail);
   return new LocalError(`Could not ${action} from hosted Supabase.\n${hint}`);
 }
 
@@ -266,35 +259,44 @@ export async function pullHostedData(main: string, email: string) {
     ]);
     if (!dump.ok) throw hostedFailure("copy the data", dump);
 
-    await ensureDevAccount(email, hostedId);
-
-    // One transaction (psql -1): if the copy does not fit the local schema, the
-    // truncate rolls back with it and the existing local data survives.
-    const truncate = `do $$ declare t text; begin
+    // One transaction (psql -1): if the copy does not fit the local schema, everything
+    // rolls back and the existing local data survives. A local account under a
+    // different id goes in the same transaction, because deleting it cascades to
+    // every row it owns.
+    const clear = `delete from auth.users where email = '${email}' and id <> '${hostedId}';
+      do $$ declare t text; begin
       for t in select format('%I.%I', schemaname, tablename) from pg_tables where schemaname = 'public'
       loop execute 'truncate table ' || t || ' cascade'; end loop; end $$;`;
-    const load = psql(`${truncate}\n${readFileSync(file, "utf8")}`);
+    const load = psql(`${clear}\n${readFileSync(file, "utf8")}`);
     if (!load.ok) {
       throw new LocalError(
-        `The hosted data did not load, so local data is unchanged. Hosted may have a table this worktree's migrations lack.\n${load.stderr.trim().split(/\r?\n/).slice(-3).join("\n")}`,
+        `The hosted data did not load, so local data is unchanged. Hosted may have a table this worktree's migrations lack.\n${lastLines(load.stderr)}`,
       );
     }
+
+    // After the load, so the account is created under the hosted id the rows carry.
+    await ensureDevAccount(email, hostedId);
   } finally {
     rmSync(folder, { recursive: true, force: true });
   }
   say("Local data now matches hosted.");
 }
 
-/** Take port 8080 from an earlier dev server, so the phone address never changes. */
-export function freePort() {
-  const windows = process.platform === "win32";
-  const pid = windows
+const windows = process.platform === "win32";
+
+function portOwner(): number | null {
+  return windows
     ? listeningPid(run("netstat", ["-ano", "-p", "TCP"]).stdout, PORT)
     : Number(
         run("lsof", ["-ti", `tcp:${PORT}`, "-sTCP:LISTEN"])
           .stdout.trim()
           .split("\n")[0],
       ) || null;
+}
+
+/** Take port 8080 from an earlier dev server, so the phone address never changes. */
+export function freePort() {
+  const pid = portOwner();
   if (!pid) return;
 
   const name = windows
@@ -311,6 +313,11 @@ export function freePort() {
   say(`Taking over port ${PORT} from the dev server that was running (process ${pid}).`);
   if (windows) run("taskkill", ["/PID", String(pid), "/T", "/F"]);
   else run("kill", [String(pid)]);
+
+  // Vite starts with --strictPort, so it must not race the old server's exit.
+  for (let attempt = 0; attempt < 20 && portOwner(); attempt++) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 250);
+  }
 }
 
 /** Start Vite and call `onReady` once it is serving. Resolves when it exits. */
