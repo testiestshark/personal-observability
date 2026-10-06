@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Exercises, sets, deletions, backfill and Railway deployment not yet built**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises, sets, backfill and Railway deployment not yet built**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
@@ -59,7 +59,9 @@ Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
 
 The tracer ([#36][tracer]) is `scripts/hevy/hevy_sync.py`, standard library only.
 `sync` reads the last 7 days of `updated` events and upserts each workout as a
-fitness activity; exercises, sets and `deleted` events are not written yet. With
+fitness activity, and hard-deletes the fitness activity of each `deleted` event
+(a missing row is not an error). Operations run oldest first, so the newest event for
+a workout wins. Exercises and sets are not written yet. With
 local Supabase running and `HEVY_API_KEY` in `.env.local`:
 
 ```powershell
