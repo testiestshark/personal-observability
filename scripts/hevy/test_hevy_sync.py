@@ -212,6 +212,101 @@ class DeletionTests(unittest.TestCase):
         self.assertEqual(operations([{"type": "mystery", "id": "x"}]), [])
 
 
+class PlanExercisesAndSetsTests(unittest.TestCase):
+    def test_nests_exercises_and_sets_under_the_workout(self) -> None:
+        [row] = plan([updated()])
+
+        bench, dip = row["exercises"]
+        self.assertEqual(
+            {key: bench[key] for key in
+             ("position", "title", "exercise_template_id", "notes", "superset_id")},
+            {"position": 0, "title": "Bench Press (Barbell)",
+             "exercise_template_id": "79D0BB3A", "notes": "", "superset_id": None},
+        )
+        self.assertEqual([item["type"] for item in bench["sets"]],
+                         ["warmup", "normal", "failure"])
+        self.assertEqual(bench["sets"][1], {
+            "position": 1, "type": "normal", "weight_kg": 80.0, "reps": 8, "rpe": 8.0,
+            "distance_meters": None, "duration_seconds": None, "custom_metric": None,
+        })
+        self.assertEqual(dip["position"], 1)
+        self.assertEqual(len(dip["sets"]), 2)
+
+    def test_set_positions_restart_for_every_exercise(self) -> None:
+        [row] = plan([updated()])
+        self.assertEqual(
+            [[item["position"] for item in exercise["sets"]] for exercise in row["exercises"]],
+            [[0, 1, 2], [0, 1]],
+        )
+
+    def test_a_superset_id_is_kept_and_a_missing_one_is_null(self) -> None:
+        [row] = plan([updated()])
+        self.assertEqual([item["superset_id"] for item in row["exercises"]], [None, 0])
+
+    def test_missing_optional_set_fields_become_null(self) -> None:
+        [row] = plan([updated(exercises=[{"index": 0, "sets": [{"index": 0, "type": "normal"}]}])])
+
+        [exercise] = row["exercises"]
+        self.assertEqual(exercise["sets"], [{
+            "position": 0, "type": "normal", "weight_kg": None, "reps": None, "rpe": None,
+            "distance_meters": None, "duration_seconds": None, "custom_metric": None,
+        }])
+        self.assertIsNone(exercise["title"])
+        self.assertIsNone(exercise["exercise_template_id"])
+
+    def test_a_set_without_a_type_is_a_normal_set(self) -> None:
+        [row] = plan([updated(exercises=[{"sets": [{"reps": 5}]}])])
+        self.assertEqual(row["exercises"][0]["sets"][0]["type"], "normal")
+
+    def test_an_unknown_set_type_is_passed_on_for_the_database_to_reject(self) -> None:
+        [row] = plan([updated(exercises=[{"sets": [{"type": "amrap"}]}])])
+        self.assertEqual(row["exercises"][0]["sets"][0]["type"], "amrap")
+
+    def test_reps_are_whole_numbers(self) -> None:
+        [row] = plan([updated(exercises=[{"sets": [{"reps": 8.0}]}])])
+        self.assertIsInstance(row["exercises"][0]["sets"][0]["reps"], int)
+
+    def test_follows_hevys_order_and_numbers_positions_without_gaps(self) -> None:
+        [row] = plan([updated(exercises=[
+            {"index": 5, "title": "Second", "sets": [{"index": 9}, {"index": 4}]},
+            {"index": 2, "title": "First", "sets": []},
+            "junk",
+        ])])
+
+        self.assertEqual([(item["position"], item["title"]) for item in row["exercises"]],
+                         [(0, "First"), (1, "Second")])
+        self.assertEqual([item["position"] for item in row["exercises"][1]["sets"]], [0, 1])
+
+    def test_a_workout_without_exercises_has_an_empty_list(self) -> None:
+        [row] = plan([updated(exercises=None)])
+        self.assertEqual(row["exercises"], [])
+
+
+class ReplaceWorkoutTests(unittest.TestCase):
+    def test_writes_each_workout_through_the_replace_function(self) -> None:
+        captured = []
+
+        def fake_open(request, timeout):
+            captured.append(request)
+            return FakeResponse(b'"activity-id"')
+
+        session = SupabaseSession("http://db.test", "pub", Path("unused"))
+        payload = {"external_id": "w1", "exercises": []}
+        with patch("hevy_sync.urlopen", fake_open):
+            session.replace_workout(payload, {"access_token": "tok"})
+
+        [request] = captured
+        self.assertEqual(request.method, "POST")
+        self.assertEqual(request.full_url, "http://db.test/rest/v1/rpc/replace_fitness_workout")
+        self.assertEqual(json.loads(request.data), {"payload": payload})
+        self.assertEqual(request.get_header("Authorization"), "Bearer tok")
+
+    def test_requires_an_access_token(self) -> None:
+        session = SupabaseSession("http://db.test", "pub", Path("unused"))
+        with self.assertRaises(SyncError):
+            session.replace_workout({}, {})
+
+
 class LocalDayTests(unittest.TestCase):
     def local_day(self, start_time: str) -> str:
         [row] = plan([updated(start_time=start_time, end_time=None)])
