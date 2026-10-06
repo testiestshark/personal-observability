@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
-import { getGarminSyncStatus } from "@/lib/health/health.functions";
+import { formatSyncStatus } from "@/lib/health/format";
+import { getGarminSyncStatus, getHevySyncStatus } from "@/lib/health/health.functions";
 
 export const Route = createFileRoute("/integrations")({
   head: () => ({
@@ -18,12 +19,15 @@ export const Route = createFileRoute("/integrations")({
       },
     ],
   }),
-  loader: async () => ({ garmin: await getGarminSyncStatus() }),
+  loader: async () => {
+    const [garmin, hevy] = await Promise.all([getGarminSyncStatus(), getHevySyncStatus()]);
+    return { garmin, hevy };
+  },
   component: Integrations,
 });
 
 function Integrations() {
-  const { garmin } = Route.useLoaderData();
+  const { garmin, hevy } = Route.useLoaderData();
 
   return (
     <>
@@ -39,12 +43,10 @@ function Integrations() {
           <div className="mt-2">
             <PlaceholderRow label="GitHub — account one" value="Not connected" />
             <PlaceholderRow label="GitHub — account two" value="Not connected" />
-            <PlaceholderRow label="Hevy workouts" value="Setup required" />
+            <PlaceholderRow label="Hevy workouts" value={formatSyncStatus(hevy?.lastSyncedAt)} />
             <PlaceholderRow
               label="Garmin health & activities"
-              value={
-                garmin ? `Last synced ${formatSyncTime(garmin.lastSyncedAt)}` : "Setup required"
-              }
+              value={formatSyncStatus(garmin?.lastSyncedAt)}
             />
             <PlaceholderRow label="Weight" value="Manual entry" />
             <PlaceholderRow label="Computer activity" value="Not connected" />
@@ -65,12 +67,4 @@ function Integrations() {
       </div>
     </>
   );
-}
-
-function formatSyncTime(value: string): string {
-  return new Intl.DateTimeFormat("en-GB", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Europe/London",
-  }).format(new Date(value));
 }

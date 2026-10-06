@@ -188,6 +188,24 @@ export type Database = {
         };
         Relationships: [];
       };
+      sync_runs: {
+        Row: {
+          last_succeeded_at: string;
+          source: string;
+          user_id: string;
+        };
+        Insert: {
+          last_succeeded_at: string;
+          source: string;
+          user_id: string;
+        };
+        Update: {
+          last_succeeded_at?: string;
+          source?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       weight_entries: {
         Row: {
           created_at: string;

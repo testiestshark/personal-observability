@@ -45,8 +45,9 @@ Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
 - **Failures.** A `401 InvalidApiKey` (revoked key or lapsed Pro) or any other error
   fails the run and leaves stored data untouched. The Integrations page's "Last
   synced" line going stale is the signal; there is no alerting.
-- **Last synced.** Each successful run records its time in a per-source sync-run
-  table (one row per owner and source). It does not use the newest workout row, as
+- **Last synced.** Each successful run records its time in `sync_runs` (one row per
+  owner and source, `last_succeeded_at`), written only after every operation
+  succeeds. The Integrations page reads it through `getHevySyncStatus`. It does not use the newest workout row, as
   Garmin does with daily health rows: a week without training would then look the
   same as a broken sync.
 - **UI in scope.** Only that "Last synced" line. Workouts already appear on the day
@@ -81,7 +82,12 @@ After a migration or policy change, run
 `scripts/verify-fitness-workout-rls.sql` (it needs two local accounts and rolls
 back; the header says how). It checks the `anon` grants, the four policies per
 table, the function's privileges, atomicity and that a second account can touch
-nothing of the first account's.
+nothing of the first account's. `scripts/verify-sync-runs-rls.sql` does the same for
+`sync_runs`:
+
+```powershell
+Get-Content scripts/verify-sync-runs-rls.sql | docker exec -i supabase_db_personal_observability psql -U postgres -v ON_ERROR_STOP=1
+```
 
 `backfill` reads `events?since=1970-01-01T00:00:00Z` across every page and applies
 the events with the same planner and writes as `sync`, so rerunning it (or running

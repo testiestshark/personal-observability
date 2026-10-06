@@ -14,7 +14,12 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "../components/app-shell";
-import { getCurrentUser } from "../lib/auth/auth.functions";
+import { DevBadge } from "../components/dev-badge";
+import { getCurrentUser, getLocalDevInfo } from "../lib/auth/auth.functions";
+
+// Asked once and kept: the answer comes from how the dev server was started, not
+// from who is signed in, so it cannot differ between requests or users.
+let localDevInfo: ReturnType<typeof getLocalDevInfo> | undefined;
 
 // Routes reachable without a session. Everything else redirects to /login.
 const PUBLIC_PATHS = new Set(["/login"]);
@@ -84,12 +89,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   // session is resolved before anything renders — no authenticated-looking flash.
   beforeLoad: async ({ location }) => {
     const user = await getCurrentUser();
+    // Dev server only, so the hosted build makes no extra request and the dev
+    // sign-in button and branch badge are compiled out of it entirely.
+    const localDev = import.meta.env.DEV ? await (localDevInfo ??= getLocalDevInfo()) : null;
     const isPublic = PUBLIC_PATHS.has(location.pathname);
 
     if (!user && !isPublic) throw redirect({ to: "/login" });
     if (user && isPublic) throw redirect({ to: "/" });
 
-    return { user };
+    return { user, localDev };
   },
 
   head: () => ({
@@ -150,7 +158,7 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
+  const { queryClient, localDev } = Route.useRouteContext();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   // Signed-out pages render bare — the shell's navigation is meaningless there.
@@ -163,5 +171,10 @@ function RootComponent() {
     </AppShell>
   );
 
-  return <QueryClientProvider client={queryClient}>{content}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={queryClient}>
+      {content}
+      {import.meta.env.DEV && localDev?.branch ? <DevBadge branch={localDev.branch} /> : null}
+    </QueryClientProvider>
+  );
 }

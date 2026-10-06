@@ -140,3 +140,14 @@ export function energyBalanceNote(
   if (isMissing(totalCalories)) return "No total calories";
   return undefined;
 }
+
+const syncTime = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Europe/London",
+});
+
+/** The Integrations page's per-source line: when a sync last ran, or that none has. */
+export function formatSyncStatus(lastSyncedAt: string | null | undefined): string {
+  return lastSyncedAt ? `Last synced ${syncTime.format(new Date(lastSyncedAt))}` : "Setup required";
+}

@@ -31,6 +31,18 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   [HEVY.md](integrations/HEVY.md) describe work that will not be built; ingestion
   keeps each source's records separate regardless.
 
+- **A tunnel for opening the local app away from home Wi-Fi.** Decided on 2026-10-06
+  (#58). `bun run local` serves the phone over the same Wi-Fi only. A tunnel would put
+  a build with a one-tap sign-in and a copy of real data on a public address.
+
+- **A separate port per worktree.** Decided on 2026-10-06 (#58). `bun run local` always
+  takes port 8080, replacing whichever worktree was being served, so the phone address
+  never changes. The on-screen branch badge says which one is showing.
+
+- **Invented seed data for local development.** Decided on 2026-10-06 (#58). Local data
+  is a copy of the hosted data (`bun run local:pull`), which is the only source that
+  looks like the live app and includes manual entries. There is no `supabase/seed.sql`.
+
 - **Pagination or "load more" for the weigh-in History list.** Settled on 2026-08-19.
   `HISTORY_LIMIT` is 10,000 rows — about 27 years of daily weigh-ins. Closed, not a gap.
 - **End-to-end / browser tests.** Considered and deferred on 2026-08-15. Playwright
