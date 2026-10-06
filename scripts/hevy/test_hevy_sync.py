@@ -8,7 +8,6 @@ from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 
 from hevy_sync import (
-    BACKFILL_SINCE,
     HevyClient,
     SupabaseSession,
     SyncError,
@@ -364,11 +363,6 @@ class SyncSinceTests(unittest.TestCase):
     def test_requests_the_last_seven_days_in_utc(self) -> None:
         now = datetime(2026, 9, 30, 12, 34, 56, 789, tzinfo=timezone.utc)
         self.assertEqual(sync_since(now), "2026-09-23T12:34:56Z")
-
-
-class BackfillTests(unittest.TestCase):
-    def test_reads_from_the_epoch(self) -> None:
-        self.assertEqual(BACKFILL_SINCE, "1970-01-01T00:00:00Z")
 
 
 class ApplyOperationsTests(unittest.TestCase):
