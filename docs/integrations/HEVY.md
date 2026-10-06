@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Exercises, sets, deletions, backfill and Railway deployment not yet built**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30) and exercises and sets stored (2026-10-06), local only / Deletions, backfill and Railway deployment not yet built**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
@@ -57,16 +57,28 @@ Agreed on 2026-09-29 in [#21][issue], after probing the real API (results in the
 
 ## Running the worker locally
 
-The tracer ([#36][tracer]) is `scripts/hevy/hevy_sync.py`, standard library only.
-`sync` reads the last 7 days of `updated` events and upserts each workout as a
-fitness activity; exercises, sets and `deleted` events are not written yet. With
-local Supabase running and `HEVY_API_KEY` in `.env.local`:
+The worker ([#36][tracer], [#37][sets]) is `scripts/hevy/hevy_sync.py`, standard
+library only. `sync` reads the last 7 days of `updated` events and writes each
+workout through the `replace_fitness_workout(payload jsonb)` function: in one
+transaction it upserts the fitness activity (keeping its id), deletes its exercises
+(their sets cascade) and inserts the new ones, so the database always holds a
+snapshot of what Hevy holds and a payload that fails partway changes nothing. The
+function is `security invoker` and executable by `authenticated` only; the owner is
+always `auth.uid()`. A bad workout is reported and the rest are still written, but
+the run exits non-zero. `deleted` events are not written yet. With local Supabase
+running and `HEVY_API_KEY` in `.env.local`:
 
 ```powershell
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync setup
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync sync
 docker compose --env-file .env.local -f docker-compose.hevy.yml run --rm hevy-sync test
 ```
+
+After a migration or policy change, run
+`scripts/verify-fitness-workout-rls.sql` (it needs two local accounts and rolls
+back; the header says how). It checks the `anon` grants, the four policies per
+table, the function's privileges, atomicity and that a second account can touch
+nothing of the first account's.
 
 `setup` signs in to the app once and keeps the session in `.hevy-sync/`
 (gitignored), separate from the Garmin worker's. Railway variables are listed in
@@ -441,3 +453,4 @@ Accessed 2026-09-23.
 [issue]: https://github.com/testiestshark/personal-observability/issues/21
 [probe-results]: https://github.com/testiestshark/personal-observability/issues/21#issuecomment-5896520860
 [tracer]: https://github.com/testiestshark/personal-observability/issues/36
+[sets]: https://github.com/testiestshark/personal-observability/issues/37

@@ -104,6 +104,61 @@ def _sets(workout: dict[str, Any]) -> list[dict[str, Any]]:
     return sets
 
 
+def _in_hevy_order(items: Any) -> list[dict[str, Any]]:
+    """The dict items of a Hevy list, ordered by their `index` (list order if absent)."""
+    if not isinstance(items, list):
+        return []
+    entries = [item for item in items if isinstance(item, dict)]
+    return sorted(
+        entries,
+        key=lambda item: (
+            item["index"]
+            if isinstance(item.get("index"), int) and not isinstance(item["index"], bool)
+            else float("inf")
+        ),
+    )
+
+
+def _planned_set(position: int, item: dict[str, Any]) -> dict[str, Any]:
+    reps = _number(item.get("reps"))
+    # An unknown type is passed on untouched: the database rejects the workout
+    # rather than the worker silently guessing what a new Hevy set type means.
+    set_type = _text(item.get("type")) or "normal"
+    return {
+        "position": position,
+        "type": set_type,
+        "weight_kg": _number(item.get("weight_kg")),
+        "reps": None if reps is None else round(reps),
+        "rpe": _number(item.get("rpe")),
+        "distance_meters": _number(item.get("distance_meters")),
+        "duration_seconds": _number(item.get("duration_seconds")),
+        "custom_metric": _number(item.get("custom_metric")),
+    }
+
+
+def _planned_exercises(workout: dict[str, Any]) -> list[dict[str, Any]]:
+    """Exercises and sets with gap-free positions; `set.index` restarts per exercise."""
+    exercises: list[dict[str, Any]] = []
+    for position, exercise in enumerate(_in_hevy_order(workout.get("exercises"))):
+        superset_id = exercise.get("superset_id")
+        exercises.append({
+            "position": position,
+            "title": _text(exercise.get("title")),
+            "exercise_template_id": _text(exercise.get("exercise_template_id")),
+            "notes": exercise["notes"] if isinstance(exercise.get("notes"), str) else None,
+            "superset_id": (
+                superset_id
+                if isinstance(superset_id, int) and not isinstance(superset_id, bool)
+                else None
+            ),
+            "sets": [
+                _planned_set(set_position, item)
+                for set_position, item in enumerate(_in_hevy_order(exercise.get("sets")))
+            ],
+        })
+    return exercises
+
+
 def _fitness_activity(
     workout: Any, user_id: str, synced_at: str
 ) -> dict[str, Any] | None:
@@ -149,13 +204,17 @@ def _fitness_activity(
         "total_reps": round(total_reps),
         "total_volume_kg": total_volume,
         "synced_at": synced_at,
+        "exercises": _planned_exercises(workout),
     }
 
 
 def plan_fitness_activities(
     events: Any, user_id: str, synced_at: str
 ) -> list[dict[str, Any]]:
-    """Turn Hevy workout events into fitness activity rows for one upsert.
+    """Turn Hevy workout events into replace-workout payloads, one per workout.
+
+    Each row is the fitness activity plus its nested `exercises` and `sets`;
+    the database replaces them as one unit.
 
     Hevy lists events newest first, so they are applied oldest first and the
     newest state of a workout wins if paging repeats it. The local day is the
@@ -348,21 +407,16 @@ class SupabaseSession:
         self._save(refreshed)
         return refreshed
 
-    def upsert_activities(
-        self, rows: list[dict[str, Any]], session: dict[str, Any]
-    ) -> None:
-        if not rows:
-            return
+    def replace_workout(self, row: dict[str, Any], session: dict[str, Any]) -> None:
+        """Store one workout, its exercises and its sets in a single transaction."""
         access_token = session.get("access_token")
         if not isinstance(access_token, str) or not access_token:
             raise SyncError("The cached app access token is missing. Run setup again.")
         self._request(
             "POST",
-            "/rest/v1/fitness_activities?"
-            + urlencode({"on_conflict": "user_id,source,external_id"}),
-            rows,
+            "/rest/v1/rpc/replace_fitness_workout",
+            {"payload": row},
             access_token=access_token,
-            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
 
@@ -427,8 +481,16 @@ def sync() -> None:
     now = datetime.now(timezone.utc)
     events = hevy.workout_events(sync_since(now))
     rows = plan_fitness_activities(events, user_id, now.isoformat())
-    supabase.upsert_activities(rows, session)
-    print(f"Synced {len(rows)} Hevy workout(s) from {len(events)} event(s).")
+    failures: list[str] = []
+    for row in rows:
+        try:
+            supabase.replace_workout(row, session)
+        except SyncError as error:
+            # One bad workout must not hold back the rest; the run still fails.
+            failures.append(f"workout {row['external_id']}: {error}")
+    print(f"Synced {len(rows) - len(failures)} of {len(rows)} Hevy workout(s) from {len(events)} event(s).")
+    if failures:
+        raise SyncError("Some workouts were not stored.\n" + "\n".join(failures))
 
 
 def main() -> int:
@@ -437,7 +499,7 @@ def main() -> int:
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
     subcommands.add_parser("setup", help="Sign in once to the app and store its session.")
-    subcommands.add_parser("sync", help="Upsert workouts updated in the last 7 days.")
+    subcommands.add_parser("sync", help="Replace workouts updated in the last 7 days, with their exercises and sets.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
     args = parser.parse_args()
 
