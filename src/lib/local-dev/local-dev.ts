@@ -88,7 +88,7 @@ export function renderBanner(input: {
     lines.push(`  PHONE           http://${input.lanAddress}:${input.port}`);
     lines.push("", '  Same Wi-Fi only. Tap "Sign in as dev" on the login page.');
     if (input.qr) lines.push("", input.qr);
-    lines.push("  Phone can't connect? See docs/LOCAL_DEV.md (one-time firewall step).");
+    lines.push("  Phone can't connect? See the firewall section of docs/LOCAL_DEV.md.");
   } else {
     lines.push("", "  No Wi-Fi address found, so there is nothing to open on a phone.");
   }

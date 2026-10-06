@@ -58,19 +58,30 @@ No database password is needed; the Supabase CLI signs in with your account. If 
 pull reports the wrong account, run `bunx supabase projects list` — see
 [ARCHITECTURE.md](ARCHITECTURE.md) on running alongside another Supabase project.
 
-## Phone: one-time firewall step
+## Phone: if it cannot connect
 
-Windows blocks inbound connections by default, so the phone cannot reach the dev server
-until port 8080 is opened. Run this once in an **administrator** PowerShell while
-connected to your home Wi-Fi:
+Usually nothing is needed. The first time `bun` or `node` listens on the network,
+Windows asks whether to allow it, and saying yes creates a firewall rule that lets the
+phone in. Check what you have with:
+
+```powershell
+Get-NetFirewallApplicationFilter | Where-Object { $_.Program -match 'bun|node' } | Get-NetFirewallRule | Format-Table DisplayName, Enabled, Profile, Action
+```
+
+A rule that allows the **Public** profile works on home Wi-Fi marked Public, but it
+also works on every other Public network. On café or hotel Wi-Fi, anyone on that network
+could open the dev server, sign in as dev with one tap and read the local copy of your
+data. Stop `bun run local` before joining one.
+
+To close that gap, mark home Wi-Fi as Private and allow the port there only. Run in an
+**administrator** PowerShell while connected to home Wi-Fi:
 
 ```powershell
 Set-NetConnectionProfile -InterfaceAlias "WiFi" -NetworkCategory Private
 New-NetFirewallRule -DisplayName "Personal Observability dev server" -Direction Inbound -Protocol TCP -LocalPort 8080 -Profile Private -Action Allow
 ```
 
-The first line marks the current Wi-Fi network as Private; the second opens the port on
-Private networks only, so it stays closed on café and hotel Wi-Fi.
+Then disable the Public `bun.exe` and `node.exe` rules in Windows Defender Firewall.
 
 ## When something is off
 
@@ -82,5 +93,5 @@ Private networks only, so it stays closed on café and hotel Wi-Fi.
   again to rebuild from this branch's migrations and re-pull the data.
 - **"Port 8080 is held by …".** Something that is not a dev server has the port. The
   command will not kill it; close it yourself.
-- **Phone shows nothing.** Check both devices are on the same Wi-Fi and the firewall
-  step above was done. Guest networks often block devices from seeing each other.
+- **Phone shows nothing.** Check both devices are on the same Wi-Fi, then see the
+  firewall section above. Guest networks often block devices from seeing each other.
