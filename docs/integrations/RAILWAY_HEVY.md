@@ -1,6 +1,6 @@
 # Railway-hosted Hevy sync
 
-**Status: Prepared (2026-10-06), awaiting the owner's go-live steps ([#41][issue])**
+**Status: Operational in Railway production since 2026-10-06 ([#41][issue])**
 
 Railway runs the Hevy worker as a private hourly cron job, the same shape as the
 [Garmin worker](RAILWAY.md):
