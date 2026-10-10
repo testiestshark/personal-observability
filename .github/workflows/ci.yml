@@ -10,6 +10,13 @@
 # every route without it — the build is what writes it. Keep build ahead of
 # typecheck and test if these steps are ever reordered.
 #
+# Runs on pull_request only — never on push, so a PR is checked once, not twice.
+# main is only ever updated by merging a PR that already passed this.
+#
+# One job on purpose: the checks are each under a minute, so separate jobs spent
+# more time on runner start-up and checkout than on the checks. The Python worker
+# tests sit at the end of the same job for that reason.
+#
 # Nothing here touches Supabase. Every test is a pure unit or jsdom component
 # test, so no database, secrets or service containers are needed. If an
 # end-to-end suite is added later it belongs in a separate workflow, so a flaky
@@ -17,8 +24,6 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 # A newer push to the same branch makes an in-flight run redundant.
@@ -28,7 +33,7 @@ concurrency:
 
 jobs:
   verify:
-    name: Lint, build, typecheck, test
+    name: Verify
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -64,37 +69,26 @@ jobs:
       - name: Test
         run: bun run test
 
-  # The sync workers in scripts/ are Python, outside the Bun toolchain above, so
-  # their unittest suites only ran when someone remembered to run them by hand.
-  # One matrix entry per worker folder; a new worker with a test_*.py file in its
-  # folder belongs in the list. Python 3.13 matches the workers' Dockerfiles.
-  # `unittest discover` is run from inside the folder because the tests import the
-  # worker module by bare name (`from garmin_sync import ...`).
-  python-workers:
-    name: Python worker tests (${{ matrix.worker }})
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        worker: [garmin, hevy]
-
-    steps:
-      - uses: actions/checkout@v4
-
+      # The sync workers in scripts/ are Python, outside the Bun toolchain above.
+      # A new worker with a test_*.py file in its folder belongs in the loop.
+      # Python 3.13 matches the workers' Dockerfiles. `unittest discover` runs from
+      # inside the folder because the tests import the worker module by bare name
+      # (`from garmin_sync import ...`).
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
       # Not every worker has a requirements.txt (hevy is stdlib-only), so the
       # install is conditional rather than a failure.
-      - name: Install dependencies
-        working-directory: scripts/${{ matrix.worker }}
+      - name: Python worker tests
         run: |
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt
-          fi
-
-      - name: Test
-        working-directory: scripts/${{ matrix.worker }}
-        run: python -m unittest discover -v -p "test_*.py"
+          for worker in garmin hevy; do
+            echo "::group::$worker"
+            cd "scripts/$worker"
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            fi
+            python -m unittest discover -v -p "test_*.py"
+            cd ../..
+            echo "::endgroup::"
+          done

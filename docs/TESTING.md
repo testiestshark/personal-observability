@@ -16,7 +16,7 @@ on GitHub.
 ### Python workers
 
 The sync workers in `scripts/garmin/` and `scripts/hevy/` have `unittest` suites that CI
-runs in a separate `python-workers` job (not part of `bun run verify`). To run one
+runs as the last step of the same CI job (not part of `bun run verify`). To run one
 locally, from inside the worker's folder, because the tests import the worker by bare name:
 
 ```powershell
