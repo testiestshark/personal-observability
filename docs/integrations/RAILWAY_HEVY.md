@@ -100,6 +100,12 @@ the published app. Rerunning is harmless.
 Log or edit a workout in Hevy. Within the hour it should appear on the published
 app, and "Last synced" should move.
 
+**Not performed at go-live (2026-10-10, owner passed).** Operational status rests
+on the scheduled runs instead: `sync_runs` advancing hourly, clean Railway logs,
+and new workouts arriving after the backfill. That is strong evidence, not a
+guarantee, that a workout logged in Hevy reaches the published app. If the check
+is ever done, record the result on [#65](https://github.com/testiestshark/personal-observability/issues/65).
+
 ## What a failed run looks like
 
 A failed run exits non-zero, leaves stored data untouched and does not update
