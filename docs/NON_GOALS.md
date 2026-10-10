@@ -31,6 +31,12 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   [HEVY.md](integrations/HEVY.md) describe work that will not be built; ingestion
   keeps each source's records separate regardless.
 
+- **Storing or showing Hevy's workout-level note.** Decided on 2026-10-10 (#29). Hevy
+  lets you write a free-text note on a whole workout (`description` in the API). The
+  owner does not use it, so the sync deliberately drops it and the workout detail view
+  does not show it. Per-exercise notes are different: they are stored and shown.
+  Reopen only if the owner starts writing workout notes.
+
 - **A tunnel for opening the local app away from home Wi-Fi.** Decided on 2026-10-06
   (#58). `bun run local` serves the phone over the same Wi-Fi only. A tunnel would put
   a build with a one-tap sign-in and a copy of real data on a public address.
