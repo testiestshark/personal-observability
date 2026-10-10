@@ -1,7 +1,8 @@
 # GitHub activity across two accounts — research
 
-Status: **decided 2026-10-10 (#20); no code, migrations or GitHub configuration exist
-yet.** Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+Status: **decided 2026-10-10 (#20); token probe done (#74, findings below).** The schema
+(#75), worker (#76), deployment (#77) and UI (#78) are not built yet. Research written
+2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
@@ -108,11 +109,13 @@ recorded here because this repository is public.
      `authoredDate`, `author.date` and more [S4].
      Optionally also store `contributionsCollection.contributionCalendar` per day as
      "GitHub's own count" for a heatmap and cross-check [S4].
-3. **Count "today" ourselves from commit author timestamps, bucketed in
-   `Europe/London`** — the timezone the rest of the app already uses. Do not treat
+3. **_(Overridden 2026-10-10: GitHub's own UTC date, see Decisions.)_ Count "today"
+   ourselves from commit author timestamps, bucketed in `Europe/London`** — the
+   timezone the rest of the app already uses. Do not treat
    GitHub's contribution calendar as the source of "today": the docs give conflicting
    descriptions of how it buckets days (§4), and it can lag by up to 24 hours [S3].
-4. **Auth: one personal access token per account, held only in Railway variables.**
+4. **_(Refined 2026-10-10: A fine-grained, B classic `read:user` only.)_ Auth: one
+   personal access token per account, held only in Railway variables.**
    Fine-grained (read-only) if all that account's work is in repos it owns; classic
    with `repo` if it commits to organisation or collaborator repos, because a
    fine-grained token is limited to a single resource owner and cannot reach repos
@@ -171,6 +174,10 @@ daily counts without details [S17]. So:
 
 ## 2. Authentication, per account
 
+_Outcome (2026-10-10, #74): account A uses a fine-grained read-only token; account B uses
+a classic token with the `read:user` scope and nothing else. `repo` is not used. See
+[§ Decisions](#decisions-2026-10-10-20) for why._
+
 | Mechanism                                   | Reach                                                                                                                                                                                                                                                                                                                                                                                                        | Fit                                                                                                                                                           |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Fine-grained PAT**                        | "Each token is limited to access resources owned by a single user or organization"; cannot be used for repos where the user is an outside or repository collaborator [S12]. Org owners may block fine-grained PATs or require approval for each one [S13].                                                                                                                                                   | Best for an account whose commits are all in **its own repos**: read-only (`Contents: read`, `Metadata: read`), expiring, least privilege.                    |
@@ -226,6 +233,11 @@ match the `github_accounts` row the token is configured for.
 ---
 
 ## 4. Timezones — how to get "today" right
+
+_Superseded 2026-10-10 (#74): the probe showed GitHub buckets contribution counts by UTC
+calendar date and does not honour sub-day windows, so counts use GitHub's own day. The
+London rule below survives only for displaying account A's commit times. See
+[§ Decisions](#decisions-2026-10-10-20)._
 
 What the sources say:
 
@@ -297,7 +309,8 @@ itself the way Garmin's 7-day refetch does, and covers late pushes and the calen
 
 _Superseded by the schema in #75; see [§ Decisions](#decisions-2026-10-10-20). The
 sketch below is the 2026-09-23 proposal and no longer matches: it stores repo names and
-headlines for every account and has no `detail` level._
+headlines for every account, has no `detail` level, and its `local_day` is a London day
+where the real schema stores GitHub's UTC date._
 
 Both tables follow [supabase/README.md](../../supabase/README.md) exactly:
 `user_id uuid not null references auth.users on delete cascade`, index on `user_id`,
@@ -400,7 +413,8 @@ Integrations (`src/routes/integrations.tsx`).
 ## 8. Open questions for the owner
 
 _All seven were answered on 2026-10-10; see [§ Decisions](#decisions-2026-10-10-20).
-Kept as asked, for the record._
+Kept as asked, for the record. Answer 3 later settled on fine-grained for A and a
+`read:user`-only classic token for B (#74), and answer 5 became GitHub's UTC date._
 
 1. **PAT route vs GitHub App route.** Do you accept per-account tokens in Railway (this
    note), in place of GITHUB.md's GitHub App "Connect" flow for reading data? If yes,

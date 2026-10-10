@@ -52,7 +52,7 @@ Detailed planned designs:
 - [Direct Hevy activity integration](integrations/HEVY.md)
 - [Garmin health and wellness integration](integrations/GARMIN.md)
 - [Railway-hosted Garmin sync](integrations/RAILWAY.md)
-- [GitHub integration](integrations/GITHUB.md)
+- [GitHub activity, two accounts](integrations/GITHUB_MULTI_ACCOUNT.md) (supersedes [GitHub integration](integrations/GITHUB.md))
 
 ## Environments and sync model
 

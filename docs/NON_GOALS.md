@@ -79,4 +79,14 @@ raised again as oversights. Outstanding work lives in GitHub issues.
 - **PR, review and issue titles in the first GitHub version.** Decided on 2026-10-10
   (#20). Only the commit list (first account) is itemised; everything else is a count.
 - **Bucketing GitHub activity by the commit's own offset when travelling.** Decided on
-  2026-10-10 (#20). Always `Europe/London`, like the rest of the app.
+  2026-10-10 (#20). Superseded in practice by the next entry.
+- **Re-bucketing GitHub counts into `Europe/London` days.** Decided on 2026-10-10 (#74,
+  #20). GitHub does not honour sub-day `from`/`to` windows and buckets by UTC calendar
+  date, so a London-day query spans two dates and double-counts. All GitHub counts use
+  GitHub's own UTC date (the **GitHub day**) and the page says so. Account A's commit
+  list may still show times in London.
+- **A classic `repo` token, or a fine-grained token for account B.** Decided on
+  2026-10-10 (#74). `repo` is write access to everything. A fine-grained token cannot
+  carry `read:user`, so account B's private work would come back as one unsplit lump.
+  Account A uses a fine-grained read-only token; B uses a classic token with `read:user`
+  and nothing else, which can read no code and no repo, PR, issue or organisation name.
