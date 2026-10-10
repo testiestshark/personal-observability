@@ -6,7 +6,7 @@ for all operations. A PR that finishes a ticket says `Closes #<n>`.
 ## Account
 
 `gh` has two accounts logged in on this machine. The repo belongs to `testiestshark`, so
-run `gh auth status` first, and `gh auth switch --user testiestshark` if `rframp` is
+run `gh auth status` first, and `gh auth switch --user testiestshark` if another account is
 active. "Could not resolve to a Repository" means the wrong account, not a permissions bug.
 
 ## Conventions
