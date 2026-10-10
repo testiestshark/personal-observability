@@ -1,8 +1,8 @@
 import type {
   FitnessActivity,
-  FitnessActivityDetail,
   FitnessExercise,
   FitnessSet,
+  HevyActivityDetail,
 } from "./health.functions";
 import { formatActivityTime, formatActivityType } from "./format";
 import { formatDayLabel } from "@/lib/weight/units";
@@ -52,7 +52,7 @@ export type WorkoutHeader = {
  * decided once, in London, by the sync, and the day view filters on the same
  * column, so the back link always lands on the day the card was listed under.
  */
-export function workoutHeader(activity: FitnessActivityDetail): WorkoutHeader {
+export function workoutHeader(activity: HevyActivityDetail): WorkoutHeader {
   return {
     title: activity.name?.trim() || formatActivityType(activity.type),
     localDay: activity.localDay,
@@ -254,18 +254,22 @@ export function groupSupersets(exercises: readonly WorkoutExercise[]): WorkoutBl
   return blocks;
 }
 
-export type ActivityDetailKind = "hevy-strength" | "unsupported";
+export type ActivityDetailKind = "hevy-strength" | "garmin-activity" | "unsupported";
 
-/** Which detail view, if any, an activity gets. Garmin runs wait on #72. */
+/**
+ * Which detail view, if any, an activity gets. This one rule decides both
+ * whether a day-view card is a link and which page it opens, so a card can
+ * never lead to a page that has no view for it.
+ */
 export function activityDetailKind(
   activity: Pick<FitnessActivity, "source" | "type">,
 ): ActivityDetailKind {
-  return activity.source === "hevy" && activity.type === "strength_training"
-    ? "hevy-strength"
-    : "unsupported";
+  if (activity.source === "garmin") return "garmin-activity";
+  if (activity.source === "hevy" && activity.type === "strength_training") return "hevy-strength";
+  return "unsupported";
 }
 
 /** Whether the day view's card for this activity opens a detail page. */
-export function isActivityLinked(activity: Pick<FitnessActivity, "source">): boolean {
-  return activity.source === "hevy";
+export function isActivityLinked(activity: Pick<FitnessActivity, "source" | "type">): boolean {
+  return activityDetailKind(activity) !== "unsupported";
 }
