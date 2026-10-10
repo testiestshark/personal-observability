@@ -133,7 +133,22 @@ Worktrees always live under `.claude/worktrees/` (gitignored). Do all edits, `bu
 
 **After any change the owner can see in the app,** finish by running `bun run local` from that worktree, leave it running, and end your final message with the phone address from its banner. The owner should see every change locally before it reaches Lovable — see [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md).
 
-**For an ordinary feature:** in that worktree, develop and test with `bun run local`, then `git add`/`commit`/`push -u origin feature/short-description` and merge to `main` via GitHub when ready. Never push straight to `main` for feature work.
+**For an ordinary feature:** in that worktree, develop and test with `bun run local`, then `git add`/`commit`/`push -u origin feature/short-description` and open a pull request. Never push straight to `main` for feature work.
+
+**Merging a pull request:** the owner decided on 2026-10-10 that Claude merges its own PRs
+once they are green, and does not merge them otherwise.
+
+- **Green** — every check on the PR has passed and it has no merge conflicts: merge it with
+  `gh pr merge <n> --merge` (this repo uses merge commits), then remove the worktree and
+  delete the branch. Check with `gh pr checks <n>` and `gh pr view <n> --json mergeable`;
+  wait for checks that are still running rather than merging past them.
+- **Red** — a failing check, or a conflict with `main`: do **not** merge, and do not
+  bypass with `--admin`. Investigate, and make the next response to the owner the report:
+  what failed or why it cannot merge, the cause, and a proposed fix. Propose the fix; do
+  not push it unless asked.
+
+Merging a PR is not deploying a migration — `bunx supabase db push` to hosted still waits
+for review as described below.
 
 **For a database change:**
 
