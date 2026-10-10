@@ -96,6 +96,24 @@ function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
                     {exercise.notes}
                   </p>
                 )}
+                {exercise.sets.length > 0 && (
+                  <ol aria-label={`${exercise.title} sets`} className="mt-3 space-y-1.5">
+                    {exercise.sets.map((set) => (
+                      <li key={set.id} className="flex items-baseline gap-3 text-sm">
+                        <span
+                          className={`w-6 shrink-0 text-center text-xs font-medium tabular-nums ${
+                            set.marker ? "text-primary" : "text-muted-foreground"
+                          }`}
+                        >
+                          {set.label}
+                        </span>
+                        <span className="min-w-0 text-foreground">
+                          {set.measurements.length > 0 ? set.measurements.join(" · ") : "—"}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </li>
             ))}
           </ol>
