@@ -22,6 +22,7 @@ from github_probe import (
     scope_lines,
     scrub,
     specs_from,
+    utc_day_window,
 )
 
 NOW = datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
@@ -58,6 +59,41 @@ class LondonDayWindowTests(unittest.TestCase):
     def test_inclusive_to_steps_back_one_second_so_windows_do_not_overlap(self):
         start, end = london_day_window(date(2026, 1, 15))
         self.assertEqual(iso_z(inclusive_to(end)), "2026-01-15T23:59:59Z")
+
+
+class UtcDayWindowTests(unittest.TestCase):
+    def test_utc_day_is_always_24_hours_even_when_london_changes_clocks(self):
+        for day in (date(2026, 3, 29), date(2026, 10, 25), date(2026, 7, 1)):
+            start, end = utc_day_window(day)
+            self.assertEqual(end - start, timedelta(hours=24))
+            self.assertEqual(iso_z(start), f"{day.isoformat()}T00:00:00Z")
+
+    def test_a_london_summer_day_straddles_two_utc_dates(self):
+        # The 2026-10-10 probe finding: this one London day touches two UTC dates, so a
+        # London-day query returned both dates' counts together.
+        start, end = london_day_window(date(2026, 7, 1))
+        self.assertEqual(start.date(), date(2026, 6, 30))
+        self.assertEqual((end - timedelta(seconds=1)).date(), date(2026, 7, 1))
+
+
+class ProbeDayBucketTests(unittest.TestCase):
+    def test_whole_date_buckets_are_reported_as_day_granular_with_matching_straddle(self):
+        def by_utc_date(start, end):
+            # GitHub's behaviour: any window returns every UTC date it touches, whole.
+            per_date = {}
+            day = start.date()
+            total = 0
+            while day <= end.date():
+                total += 5
+                day += timedelta(days=1)
+            return total
+
+        client = FakeClient(commits_by_window=by_utc_date)
+        lines, ok = probe_account(client, AccountSpec("B", "tok", "alice", "counts_only"), NOW)
+        self.assertTrue(ok)
+        report = "\n".join(lines)
+        self.assertIn("first-half=5 second-half=5 -> day_granular", report)
+        self.assertIn("matches (UTC date buckets)", report)
 
 
 class ClassifierTests(unittest.TestCase):
@@ -320,6 +356,34 @@ class ExposureAuditTests(unittest.TestCase):
         lines, _ = exposure_audit(AuditClient(), NOW)
         report = "\n".join(lines)
         self.assertIn("private profile fields present: yes", report)
+
+    def test_null_entries_are_counted_as_hidden_not_a_crash(self):
+        # Regression: a real run died with AttributeError on a null node (items the
+        # token may not see come back as null), which also lost the whole audit.
+        class NullNodes(AuditClient):
+            def query(self, query, variables=None):
+                if "pullRequestContributions" in query:
+                    node = {"pullRequest": {"title": "Secret PR title", "repository": {"isPrivate": True}}}
+                    nodes = [None, node, None]
+                    return {"viewer": {"contributionsCollection": {"pullRequestContributions": {"nodes": nodes}}}}, {}
+                return super().query(query, variables)
+
+        lines, _ = exposure_audit(NullNodes(), NOW)
+        report = "\n".join(lines)
+        self.assertIn("pull request contributions: 3 listed, 1 in private repos, title readable on 1, 2 hidden", report)
+        self.assertNotIn("Secret PR title", report)
+
+    def test_an_unexpected_exception_in_one_check_is_contained(self):
+        class Broken(AuditClient):
+            def rest_get(self, path):
+                if path == "/user":
+                    raise ValueError("boom")
+                return super().rest_get(path)
+
+        lines, _ = exposure_audit(Broken(), NOW)
+        report = "\n".join(lines)
+        self.assertIn("REST /user: not available (unexpected response shape: ValueError)", report)
+        self.assertIn("REST /user/emails: HTTP 404", report)
 
     def test_named_only_accepts_real_strings(self):
         self.assertTrue(named("x"))
