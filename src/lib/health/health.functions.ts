@@ -59,15 +59,28 @@ export type FitnessExercise = {
 };
 
 /**
- * One activity for its detail page: the day-view fields plus what the header
+ * A Hevy activity for its detail page: the day-view fields plus what the header
  * needs, and its exercises (ordered by position) with their sets nested.
  */
-export type FitnessActivityDetail = FitnessActivity & {
+export type HevyActivityDetail = FitnessActivity & {
+  source: "hevy";
   localDay: string;
   activeSets: number | null;
   totalVolumeKg: number | null;
   exercises: FitnessExercise[];
 };
+
+/**
+ * A Garmin activity for its detail page. It has no exercises: the lookup does
+ * not fetch them, and the headline numbers are all day-view fields.
+ */
+export type GarminActivityDetail = FitnessActivity & {
+  source: "garmin";
+  localDay: string;
+};
+
+/** One activity for its detail page; `source` says which shape it is. */
+export type FitnessActivityDetail = HevyActivityDetail | GarminActivityDetail;
 
 async function requireUser() {
   // Server functions ship browser RPC stubs, so the server-only client must be
@@ -162,6 +175,12 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
     return (rows ?? []).map(toFitnessActivity);
   });
 
+/**
+ * One activity for its detail page, shaped by source: a Hevy row also loads its
+ * exercises and sets, a Garmin row does not. The first query reads the columns
+ * every source has, which is how the source is known; only Hevy pays for a
+ * second.
+ */
 export const getFitnessActivity = createServerFn({ method: "GET" })
   .validator((data: { id: string }) => ({ id: activityIdSchema.parse(data.id) }))
   .handler(async ({ data }): Promise<FitnessActivityDetail | null> => {
@@ -169,27 +188,40 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
     const { data: row, error } = await supabase
       .from("fitness_activities")
       .select(
-        `id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg,
-        fitness_exercises (
-          id, position, title, notes, superset_id,
-          fitness_sets (id, position, type, weight_kg, reps, rpe, distance_meters, duration_seconds, custom_metric)
-        )`,
+        "id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg",
       )
       .eq("user_id", userId)
       .eq("id", data.id)
-      .order("position", { referencedTable: "fitness_exercises", ascending: true })
-      .order("position", { referencedTable: "fitness_exercises.fitness_sets", ascending: true })
       .maybeSingle();
 
     if (error) throw new Error(error.message);
     if (!row) return null;
 
+    const activity = toFitnessActivity(row);
+    if (activity.source === "garmin") {
+      return { ...activity, source: "garmin", localDay: row.local_day };
+    }
+
+    const { data: exercises, error: exercisesError } = await supabase
+      .from("fitness_exercises")
+      .select(
+        `id, position, title, notes, superset_id,
+        fitness_sets (id, position, type, weight_kg, reps, rpe, distance_meters, duration_seconds, custom_metric)`,
+      )
+      .eq("user_id", userId)
+      .eq("fitness_activity_id", data.id)
+      .order("position", { ascending: true })
+      .order("position", { referencedTable: "fitness_sets", ascending: true });
+
+    if (exercisesError) throw new Error(exercisesError.message);
+
     return {
-      ...toFitnessActivity(row),
+      ...activity,
+      source: "hevy",
       localDay: row.local_day,
       activeSets: row.active_sets,
       totalVolumeKg: row.total_volume_kg,
-      exercises: row.fitness_exercises.map((exercise) => ({
+      exercises: (exercises ?? []).map((exercise) => ({
         id: exercise.id,
         position: exercise.position,
         title: exercise.title,

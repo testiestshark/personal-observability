@@ -2,10 +2,13 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
+import { garminActivityHeader } from "@/lib/health/garmin-activity";
 import {
   activityIdSchema,
   type FitnessActivityDetail,
+  type GarminActivityDetail,
   getFitnessActivity,
+  type HevyActivityDetail,
 } from "@/lib/health/health.functions";
 import {
   activityDetailKind,
@@ -48,11 +51,16 @@ export const Route = createFileRoute("/activities/$id")({
 function ActivityDetail() {
   const { activity } = Route.useLoaderData();
 
-  return activityDetailKind(activity) === "hevy-strength" ? (
-    <HevyWorkout activity={activity} />
-  ) : (
-    <UnsupportedActivity activity={activity} />
-  );
+  // The kind is the same rule the day view links by. The source check only
+  // narrows the type: the lookup shapes the row by source.
+  const kind = activityDetailKind(activity);
+  if (kind === "hevy-strength" && activity.source === "hevy") {
+    return <HevyWorkout activity={activity} />;
+  }
+  if (kind === "garmin-activity" && activity.source === "garmin") {
+    return <GarminActivity activity={activity} />;
+  }
+  return <UnsupportedActivity activity={activity} />;
 }
 
 function BackToDay({ day }: { day: string }) {
@@ -68,7 +76,7 @@ function BackToDay({ day }: { day: string }) {
   );
 }
 
-function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
+function HevyWorkout({ activity }: { activity: HevyActivityDetail }) {
   const header = workoutHeader(activity);
   const blocks = groupSupersets(workoutExercises(activity.exercises));
   const stats = [
@@ -132,6 +140,31 @@ function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
             )}
           </ol>
         )}
+      </section>
+    </>
+  );
+}
+
+function GarminActivity({ activity }: { activity: GarminActivityDetail }) {
+  const header = garminActivityHeader(activity);
+
+  return (
+    <>
+      <BackToDay day={header.localDay} />
+      <PageHeader eyebrow={`${header.dateLabel} · ${header.startTime}`} title={header.title} />
+
+      <section
+        aria-label="Activity totals"
+        className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 md:grid-cols-4 md:p-5"
+      >
+        {header.tiles.map((tile) => (
+          <div key={tile.label} className="min-w-0">
+            <p className="truncate text-[11px] text-muted-foreground">{tile.label}</p>
+            <p className="mt-1 truncate font-display text-xl text-foreground md:text-2xl">
+              {tile.value}
+            </p>
+          </div>
+        ))}
       </section>
     </>
   );

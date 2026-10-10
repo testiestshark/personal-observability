@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type {
   FitnessActivity,
-  FitnessActivityDetail,
   FitnessExercise,
   FitnessSet,
+  HevyActivityDetail,
 } from "./health.functions";
 import {
   activityDetailKind,
@@ -27,7 +27,7 @@ const exercise = (overrides: Partial<FitnessExercise> & { position: number }): F
   ...overrides,
 });
 
-const hevyStrength: FitnessActivityDetail = {
+const hevyStrength: HevyActivityDetail = {
   id: "5b0f7c1e-6f3a-4d34-9c5e-0f7f6a1c2b11",
   source: "hevy",
   name: "Push day",
@@ -503,25 +503,45 @@ describe("activityDetailKind", () => {
     expect(activityDetailKind(hevyStrength)).toBe("hevy-strength");
   });
 
-  it("has no detail view for a Garmin activity", () => {
-    expect(activityDetailKind({ ...hevyStrength, source: "garmin", type: "running" })).toBe(
-      "unsupported",
-    );
+  it("renders a Garmin run with the Garmin view", () => {
+    expect(activityDetailKind({ source: "garmin", type: "running" })).toBe("garmin-activity");
+  });
+
+  it("renders every Garmin type with the same generic view", () => {
+    for (const type of ["cycling", "lap_swimming", "yoga", "some_type_not_seen_yet"]) {
+      expect(activityDetailKind({ source: "garmin", type })).toBe("garmin-activity");
+    }
   });
 
   it("has no detail view for a Hevy activity of another type", () => {
-    expect(activityDetailKind({ ...hevyStrength, type: "running" })).toBe("unsupported");
+    expect(activityDetailKind({ source: "hevy", type: "running" })).toBe("unsupported");
   });
 });
 
 describe("isActivityLinked", () => {
-  const card = (source: FitnessActivity["source"]) => ({ source });
+  const card = (source: FitnessActivity["source"], type: string) => ({ source, type });
 
-  it("links Hevy cards on the day view", () => {
-    expect(isActivityLinked(card("hevy"))).toBe(true);
+  it("links a Hevy strength card on the day view", () => {
+    expect(isActivityLinked(card("hevy", "strength_training"))).toBe(true);
   });
 
-  it("leaves Garmin cards plain until #72", () => {
-    expect(isActivityLinked(card("garmin"))).toBe(false);
+  it("links a Garmin card, whatever its type", () => {
+    expect(isActivityLinked(card("garmin", "running"))).toBe(true);
+    expect(isActivityLinked(card("garmin", "cycling"))).toBe(true);
+  });
+
+  it("leaves a card without a renderer plain, so it can never open the dead-end page", () => {
+    expect(isActivityLinked(card("hevy", "running"))).toBe(false);
+  });
+
+  it("links a card if and only if it has a detail view", () => {
+    const sources: FitnessActivity["source"][] = ["garmin", "hevy"];
+    const types = ["strength_training", "running", "cycling", "yoga"];
+    for (const source of sources) {
+      for (const type of types) {
+        const activity = { source, type };
+        expect(isActivityLinked(activity)).toBe(activityDetailKind(activity) !== "unsupported");
+      }
+    }
   });
 });
