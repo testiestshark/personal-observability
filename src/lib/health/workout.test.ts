@@ -1,13 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import type { FitnessActivity, FitnessActivityDetail } from "./health.functions";
+import type { FitnessActivity, FitnessActivityDetail, FitnessExercise } from "./health.functions";
 import {
   activityDetailKind,
   formatKg,
   formatWorkoutDuration,
   isActivityLinked,
+  UNTITLED_EXERCISE,
+  workoutExercises,
   workoutHeader,
 } from "./workout";
+
+const exercise = (overrides: Partial<FitnessExercise> & { position: number }): FitnessExercise => ({
+  id: `exercise-${overrides.position}`,
+  title: "Bench Press (Barbell)",
+  notes: null,
+  supersetId: null,
+  sets: [],
+  ...overrides,
+});
 
 const hevyStrength: FitnessActivityDetail = {
   id: "5b0f7c1e-6f3a-4d34-9c5e-0f7f6a1c2b11",
@@ -24,6 +35,7 @@ const hevyStrength: FitnessActivityDetail = {
   activeSets: 12,
   totalReps: 96,
   totalVolumeKg: 5_432.5,
+  exercises: [],
 };
 
 describe("formatKg", () => {
@@ -121,6 +133,67 @@ describe("workoutHeader", () => {
     expect(header.activeSets).toBe("—");
     expect(header.totalReps).toBe("—");
     expect(header.volume).toBe("—");
+  });
+});
+
+describe("workoutExercises", () => {
+  it("lists exercises in the order they were done, whatever order they arrive in", () => {
+    const shuffled = [
+      exercise({ position: 2, title: "Triceps Pushdown" }),
+      exercise({ position: 0, title: "Bench Press (Barbell)" }),
+      exercise({ position: 1, title: "Incline Press (Dumbbell)" }),
+    ];
+    expect(workoutExercises(shuffled).map((item) => item.title)).toEqual([
+      "Bench Press (Barbell)",
+      "Incline Press (Dumbbell)",
+      "Triceps Pushdown",
+    ]);
+  });
+
+  it("orders by position as a number, not as text (10 comes after 2)", () => {
+    const positions = [10, 2, 0, 1].map((position) =>
+      exercise({ position, title: `Exercise ${position}` }),
+    );
+    expect(workoutExercises(positions).map((item) => item.title)).toEqual([
+      "Exercise 0",
+      "Exercise 1",
+      "Exercise 2",
+      "Exercise 10",
+    ]);
+  });
+
+  it("does not reorder the array it was given", () => {
+    const input = [exercise({ position: 1 }), exercise({ position: 0 })];
+    workoutExercises(input);
+    expect(input.map((item) => item.position)).toEqual([1, 0]);
+  });
+
+  it("falls back to 'Untitled exercise' when Hevy sent no title", () => {
+    const [item] = workoutExercises([exercise({ position: 0, title: null })]);
+    expect(item?.title).toBe(UNTITLED_EXERCISE);
+    expect(UNTITLED_EXERCISE).toBe("Untitled exercise");
+  });
+
+  it("treats a blank title as untitled too", () => {
+    const [item] = workoutExercises([exercise({ position: 0, title: "   " })]);
+    expect(item?.title).toBe(UNTITLED_EXERCISE);
+  });
+
+  it("carries an exercise's notes through, trimmed", () => {
+    const [item] = workoutExercises([exercise({ position: 0, notes: "  Paused reps  " })]);
+    expect(item?.notes).toBe("Paused reps");
+  });
+
+  it("has no notes when they are null or blank, so the page shows none", () => {
+    const items = workoutExercises([
+      exercise({ position: 0, notes: null }),
+      exercise({ position: 1, notes: "  " }),
+    ]);
+    expect(items.map((item) => item.notes)).toEqual([null, null]);
+  });
+
+  it("returns an empty list for a workout with no exercises", () => {
+    expect(workoutExercises([])).toEqual([]);
   });
 });
 
