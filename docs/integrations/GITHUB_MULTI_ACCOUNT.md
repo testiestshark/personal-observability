@@ -1,8 +1,14 @@
 # GitHub activity across two accounts — research
 
-Status: research only (2026-09-23). No code, migrations or GitHub configuration exist.
-Builds on [GITHUB.md](GITHUB.md) (Milestone 1, "Connect GitHub", parked) — read §0
-below for where this note agrees and where it departs from that plan.
+Status: **decided 2026-10-10 (#20); no code, migrations or GitHub configuration exist
+yet.** Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+"Connect GitHub") for reading data — read §0 for where this note agrees and departs
+from that plan.
+
+> **Read this first.** The owner's decisions are in
+> [§ Decisions](#decisions-2026-10-10-20) below and **override** the recommendations in
+> the rest of this note where they differ. The research sections are kept as the
+> evidence behind them; the build is tracked in the child issues of #20.
 
 The owner's question: how to bring GitHub activity — commits, short summaries, a total
 for the day — into the app, for **two separate GitHub accounts** (called account A and
@@ -11,6 +17,55 @@ account B here), shown in one combined view that still keeps the accounts clearl
 Sources are primary (docs.github.com, the published GitHub GraphQL schema, the GitHub
 changelog, supabase.com). Numbered references like [S4] point to the list at the end.
 Anything not confirmed in a primary source is marked **unverified**.
+
+---
+
+## Decisions (2026-10-10, #20)
+
+| Question (§8)           | Decision                                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PAT route or GitHub App | **PAT route.** One token per account in Railway. GITHUB.md Milestone 1 is superseded.                                                                                                                            |
+| What is account B       | Signed up with a work email, private contributions only, two repos under B's own username (not an org). **No repo names or commit headlines may be stored or shown**; counts are fine.                           |
+| Token scope             | **Fine-grained, read-only, repository-selected**, one per account, 90-day expiry. Start at `Metadata: read` only; add `Contents: read` only if the probe (#74) proves it is needed. **No classic `repo` token.** |
+| Default branch or all   | **Default branch only.**                                                                                                                                                                                         |
+| "Today" timezone        | **Always `Europe/London`.**                                                                                                                                                                                      |
+| What counts as activity | **Contributions, split by type**: commits, PRs opened, PR reviews, issues opened, plus an `unsplit` bucket for what a token cannot see. Labelled "contributions", never "commits", for totals.                   |
+| Backfill depth          | **From 2026-01-01.**                                                                                                                                                                                             |
+
+Consequences that change the research above:
+
+- **Reading.** Instead of reading commit history for every account, the worker makes one
+  `contributionsCollection(from, to)` call per **London day** per account and stores the
+  four per-type totals (`totalCommitContributions`, `totalPullRequestContributions`,
+  `totalPullRequestReviewContributions`, `totalIssueContributions`) plus
+  `restrictedContributionsCount` as `unsplit`. Only account A additionally reads
+  default-branch `history` to keep an itemised commit list. This is what makes B
+  counts-only by construction: its query never selects a name or message.
+- **Detail level.** `github_accounts.detail` is `'full'` or `'counts_only'`, default
+  `counts_only`. A is `full`, B is `counts_only`. A contract test fails if a
+  `counts_only` query selects any repo-name, message, URL or author field. B also shows
+  no repo count.
+- **Totals.** The combined headline is a **simple sum** across accounts. The
+  distinct-SHA dedup of §3 is dropped (B stores no SHAs). A commit co-authored by both
+  accounts counts twice; accepted as rare.
+- **Schema.** The sketch in §6 is superseded by #75: `github_accounts` (adds `detail`,
+  `token_expires_at`, `last_synced_at`), `github_daily_contributions` (now the core
+  table: `account_id, local_day, kind, count`), and `github_commits` for `full` accounts
+  only, headline only and without `committed_at`, `additions` or `deletions`.
+- **Tokens.** 90-day expiry; the worker records `token_expires_at` from the
+  `github-authentication-token-expiration` header and the app warns 14 days ahead.
+  Rotation is manual. Separate sealed Railway variables per account; logs carry counts
+  and timings only; local runs use fixtures except for the one-off probe.
+- **Warnings.** A non-zero `unsplit` count on a `full` account means its token cannot
+  see some repositories, and is surfaced rather than silently undercounted.
+- **Workers share the app login** (as Garmin does). Narrowing that is a separate,
+  cross-cutting follow-up (#79), not part of this work.
+
+**Still unverified until the probe (#74) runs:** whether sub-day `from`/`to` windows are
+honoured for commit contributions (if not, B's commit count uses GitHub's own day
+bucketing and the page says so); whether per-type totals include private-repo work at
+`Metadata: read` only; whether the expiry header is present on fine-grained tokens;
+whether B's totals appear with its "Private contributions" profile setting off.
 
 ---
 
@@ -132,10 +187,10 @@ match the `github_accounts` row the token is configured for.
   email to get credit [S18]), and possibly for rebased commits, where both the original
   author and the rebaser get credit [S1]. Whether `history(author: {id})` also matches
   co-authors is **unverified**.
-- **Rule:** store one row per `(account, repo, oid)`. For per-account figures, count
-  that account's rows. For the combined headline, count
-  `DISTINCT oid` across both accounts. The UI can mark shared commits
-  ("also on account B").
+- **Rule (superseded 2026-10-10):** the note proposed one row per `(account, repo, oid)`
+  and a `DISTINCT oid` combined headline. The decision is a simple sum of per-type daily
+  counts, accepting a double-count for a commit co-authored by both accounts; see
+  [§ Decisions](#decisions-2026-10-10-20).
 - **Same commit in two repos** (mirrors, or fork and upstream): contributions in forks
   don't count [S1], and deduping on `oid` handles the rest.
 - **Default branch only.** Feature-branch commits don't count until merged [S1][S3].
@@ -214,6 +269,10 @@ itself the way Garmin's 7-day refetch does, and covers late pushes and the calen
 ---
 
 ## 6. Data model sketch (not a migration)
+
+_Superseded by the schema in #75; see [§ Decisions](#decisions-2026-10-10-20). The
+sketch below is the 2026-09-23 proposal and no longer matches: it stores repo names and
+headlines for every account and has no `detail` level._
 
 Both tables follow [supabase/README.md](../../supabase/README.md) exactly:
 `user_id uuid not null references auth.users on delete cascade`, index on `user_id`,
@@ -314,6 +373,9 @@ Integrations (`src/routes/integrations.tsx`).
 ---
 
 ## 8. Open questions for the owner
+
+_All seven were answered on 2026-10-10; see [§ Decisions](#decisions-2026-10-10-20).
+Kept as asked, for the record._
 
 1. **PAT route vs GitHub App route.** Do you accept per-account tokens in Railway (this
    note), in place of GITHUB.md's GitHub App "Connect" flow for reading data? If yes,

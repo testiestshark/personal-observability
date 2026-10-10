@@ -1,12 +1,14 @@
 # GitHub integration — Milestone 1: Connect GitHub
 
-Status: design only and parked. No code, migrations, or GitHub configuration exist
-yet.
+Status: **superseded (2026-10-10, #20).** Design only; no code, migrations, or GitHub
+configuration exist, and none will be built from this plan.
 
-> **See also:** [GITHUB_MULTI_ACCOUNT.md](GITHUB_MULTI_ACCOUNT.md) (research, 2026-09-23) —
-> reading commits and daily totals for both GitHub accounts. It recommends per-account
-> tokens on a Railway worker instead of this App-installation flow for _reading data_,
-> and explains why. That choice is open for the owner to make.
+> **Superseded by** [GITHUB_MULTI_ACCOUNT.md](GITHUB_MULTI_ACCOUNT.md). The owner chose
+> one read-only personal access token per account on a Railway worker instead of this
+> App-installation flow for _reading data_; see its
+> [Decisions](GITHUB_MULTI_ACCOUNT.md#decisions-2026-10-10-20) section. This document is
+> kept as the record of the alternative that was not taken, and as the starting point
+> if the app ever becomes multi-user or wants a "Connect GitHub" button.
 
 ## 1. Milestone definition
 
