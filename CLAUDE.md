@@ -68,7 +68,7 @@ bunx supabase start / status / stop   # local Supabase stack (requires Docker ru
 
 Vitest + Testing Library, with tests beside the code as `*.test.ts` / `*.test.tsx`.
 [.github/workflows/ci.yml](.github/workflows/ci.yml) runs lint, format check, typecheck,
-test and build on every pull request and every push to `main`.
+test, build and the Python worker tests as one job, on every pull request (not on push).
 
 **Run `bun run verify` before pushing** — it is the same sequence CI runs, so green
 locally means green on GitHub.
