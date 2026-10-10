@@ -1,8 +1,9 @@
 # GitHub activity across two accounts — research
 
-Status: **decided 2026-10-10 (#20); token probe done (#74, findings below).** The schema
-(#75), worker (#76), deployment (#77) and UI (#78) are not built yet. Research written
-2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+Status: **decided 2026-10-10 (#20); token probe done (#74, findings below); schema
+written and verified locally (#75, migration `20261010120000_create_github_tables.sql`,
+not yet pushed to hosted).** The worker (#76), deployment (#77) and UI (#78) are not
+built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
@@ -54,7 +55,13 @@ Consequences that change the research above:
 - **Schema.** The sketch in §6 is superseded by #75: `github_accounts` (adds `detail`,
   `token_expires_at`, `last_synced_at`), `github_daily_contributions` (now the core
   table: `account_id, local_day, kind, count`), and `github_commits` for `full` accounts
-  only, headline only and without `committed_at`, `additions` or `deletions`.
+  only, headline only and without `committed_at`, `additions` or `deletions`. The
+  "`full` only" rule is enforced by the insert and update policies on `github_commits`
+  (the parent account must have `detail = 'full'`), so a `counts_only` account cannot
+  have a repo name or headline stored even if the worker is wrong. Flipping an account
+  to `counts_only` later does not delete commits already stored; the worker must.
+  `scripts/verify-github-rls.sql` is the privilege and isolation check (HEVY.md shows
+  how to run these scripts).
 - **Tokens.** 90-day expiry; the worker records `token_expires_at` from the
   `github-authentication-token-expiration` header and the app warns 14 days ahead.
   Rotation is manual. Separate sealed Railway variables per account; logs carry counts
