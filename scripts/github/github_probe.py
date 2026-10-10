@@ -213,6 +213,17 @@ def london_day_window(day: date) -> tuple[datetime, datetime]:
     return start, end
 
 
+def utc_day_window(day: date) -> tuple[datetime, datetime]:
+    """UTC instants [start, end) of one UTC calendar date.
+
+    GitHub buckets contribution counts by UTC date (probe run 2026-10-10: a London-day
+    window spanning two UTC dates returned the sum of both). Always 24 hours, so there
+    are no DST edge cases.
+    """
+    start = datetime.combine(day, time.min, tzinfo=timezone.utc)
+    return start, start + timedelta(days=1)
+
+
 def london_day_of(instant: datetime) -> date:
     return instant.astimezone(LONDON).date()
 
@@ -395,25 +406,41 @@ def probe_account(client: GraphQLClient, spec: AccountSpec, now: datetime) -> tu
         else:
             lines.append("unsplit is 0: nothing hidden from this token")
 
-        # Check 2, day level: the busiest of the last RECENT_DAYS London days, in halves.
-        today = now.astimezone(LONDON).date()
-        busiest_day, busiest = today, -1
+        # Check 2, day level, on UTC dates (GitHub's own buckets): the busiest of the last
+        # RECENT_DAYS dates, in halves, then a 24h window straddling midnight against the
+        # two dates it touches. Whole-date buckets give first == second == day and
+        # straddle == previous + day.
+        today = now.astimezone(timezone.utc).date()
+        counts: dict[date, int] = {}
         for offset in range(RECENT_DAYS):
             day = today - timedelta(days=offset)
-            start, end = london_day_window(day)
-            count = fetch_totals(client, start, end).commit
-            if count > busiest:
-                busiest_day, busiest = day, count
+            start, end = utc_day_window(day)
+            counts[day] = fetch_totals(client, start, end).commit
+        busiest_day = max(counts, key=lambda d: counts[d])
+        busiest = counts[busiest_day]
         if busiest <= 0:
             lines.append(f"day-level windows: no commits in the last {RECENT_DAYS} days (inconclusive)")
         else:
-            start, end = london_day_window(busiest_day)
-            midday = start + (end - start) / 2
+            start, end = utc_day_window(busiest_day)
+            midday = start + timedelta(hours=12)
             first = fetch_totals(client, start, midday).commit
             second = fetch_totals(client, midday, end).commit
             verdict = classify_halves(busiest, first, second)
             lines.append(
-                f"day-level windows: day={busiest} first-half={first} second-half={second} -> {verdict}"
+                f"day-level windows (UTC dates): day={busiest} first-half={first} "
+                f"second-half={second} -> {verdict}"
+            )
+            previous = busiest_day - timedelta(days=1)
+            prev_count = counts.get(previous)
+            if prev_count is None:
+                p_start, p_end = utc_day_window(previous)
+                prev_count = fetch_totals(client, p_start, p_end).commit
+            straddle = fetch_totals(client, start - timedelta(hours=12), midday).commit
+            expected = prev_count + busiest
+            lines.append(
+                f"midnight-straddling window: {straddle} vs previous date {prev_count} + "
+                f"date {busiest} = {expected} -> "
+                f"{'matches (UTC date buckets)' if straddle == expected else 'DIFFERENT'}"
             )
 
         # Check 2, commit level: only for the full-detail account, which may read history.
@@ -429,7 +456,7 @@ def probe_account(client: GraphQLClient, spec: AccountSpec, now: datetime) -> tu
                 outside = fetch_totals(
                     client, newest + timedelta(seconds=60), newest + timedelta(seconds=121)
                 ).commit
-                day_start, day_end = london_day_window(london_day_of(newest))
+                day_start, day_end = utc_day_window(newest.astimezone(timezone.utc).date())
                 day_total = fetch_totals(client, day_start, day_end).commit
                 verdict = classify_commit_window(inside, outside, day_total)
                 lines.append(
@@ -463,34 +490,46 @@ def exposure_audit(client: AuditClient, now: datetime) -> tuple[list[str], int]:
             run()
         except ProbeError as error:
             lines.append(f"{label}: not available ({error})")
-        except (KeyError, TypeError):
-            lines.append(f"{label}: not available (unexpected response shape)")
+        except Exception as error:  # a check must never take the whole audit down
+            lines.append(f"{label}: not available (unexpected response shape: {type(error).__name__})")
+
+    def present(entries: list[Any] | None) -> list[dict[str, Any]]:
+        """GitHub returns null entries for items the token may not see; count them apart."""
+        return [e for e in (entries or []) if isinstance(e, dict)]
 
     def commits() -> None:
         data, _ = client.query(AUDIT_COMMITS_QUERY, window)
-        items = data["viewer"]["contributionsCollection"]["commitContributionsByRepository"]
+        raw = data["viewer"]["contributionsCollection"]["commitContributionsByRepository"] or []
+        items = present(raw)
         private = sum(1 for i in items if (i.get("repository") or {}).get("isPrivate"))
         readable = sum(1 for i in items if named((i.get("repository") or {}).get("nameWithOwner")))
-        capped = " (list capped at 100)" if len(items) >= 100 else ""
+        capped = " (list capped at 100)" if len(raw) >= 100 else ""
         record(
             "commit breakdown by repository",
-            f"{len(items)} repos listed{capped}, {private} private, repo name readable on {readable}",
+            f"{len(raw)} repos listed{capped}, {private} private, repo name readable on {readable}, "
+            f"{len(raw) - len(items)} hidden",
             readable,
         )
 
     def nodes_check(label: str, query: str, field: str, inner: str) -> None:
         data, _ = client.query(query, window)
-        nodes = data["viewer"]["contributionsCollection"][field]["nodes"]
+        raw = data["viewer"]["contributionsCollection"][field]["nodes"] or []
+        nodes = present(raw)
         private = sum(
             1 for n in nodes if ((n.get(inner) or {}).get("repository") or {}).get("isPrivate")
         )
         readable = sum(1 for n in nodes if named((n.get(inner) or {}).get("title")))
-        record(label, f"{len(nodes)} listed, {private} in private repos, title readable on {readable}", readable)
+        record(
+            label,
+            f"{len(raw)} listed, {private} in private repos, title readable on {readable}, "
+            f"{len(raw) - len(nodes)} hidden",
+            readable,
+        )
 
     def private_repos() -> None:
         data, _ = client.query(AUDIT_PRIVATE_REPOS_QUERY)
         block = data["viewer"]["repositories"]
-        readable = sum(1 for n in block["nodes"] if named(n.get("nameWithOwner")))
+        readable = sum(1 for n in present(block["nodes"]) if named(n.get("nameWithOwner")))
         record(
             "private repositories (GraphQL)",
             f"total {block['totalCount']}, name readable on {readable}",
@@ -500,7 +539,7 @@ def exposure_audit(client: AuditClient, now: datetime) -> tuple[list[str], int]:
     def organisations() -> None:
         data, _ = client.query(AUDIT_ORGANISATIONS_QUERY)
         block = data["viewer"]["organizations"]
-        readable = sum(1 for n in block["nodes"] if named(n.get("login")))
+        readable = sum(1 for n in present(block["nodes"]) if named(n.get("login")))
         record("organisations", f"total {block['totalCount']}, name readable on {readable}", readable)
 
     def rest_profile() -> None:
@@ -510,7 +549,7 @@ def exposure_audit(client: AuditClient, now: datetime) -> tuple[list[str], int]:
 
     def rest_private_repos() -> None:
         status, body = client.rest_get("/user/repos?visibility=private&per_page=50")
-        items = body if isinstance(body, list) else []
+        items = [i for i in body if isinstance(i, dict)] if isinstance(body, list) else []
         readable = sum(1 for i in items if named(i.get("full_name")) or named(i.get("name")))
         record("REST /user/repos (private)", f"HTTP {status}, {len(items)} returned, name readable on {readable}", readable)
 

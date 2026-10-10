@@ -22,20 +22,22 @@ Anything not confirmed in a primary source is marked **unverified**.
 
 ## Decisions (2026-10-10, #20)
 
-| Question (§8)           | Decision                                                                                                                                                                                                         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| PAT route or GitHub App | **PAT route.** One token per account in Railway. GITHUB.md Milestone 1 is superseded.                                                                                                                            |
-| What is account B       | Signed up with a work email, private contributions only, two repos under B's own username (not an org). **No repo names or commit headlines may be stored or shown**; counts are fine.                           |
-| Token scope             | **Fine-grained, read-only, repository-selected**, one per account, 90-day expiry. Start at `Metadata: read` only; add `Contents: read` only if the probe (#74) proves it is needed. **No classic `repo` token.** |
-| Default branch or all   | **Default branch only.**                                                                                                                                                                                         |
-| "Today" timezone        | **Always `Europe/London`.**                                                                                                                                                                                      |
-| What counts as activity | **Contributions, split by type**: commits, PRs opened, PR reviews, issues opened, plus an `unsplit` bucket for what a token cannot see. Labelled "contributions", never "commits", for totals.                   |
-| Backfill depth          | **From 2026-01-01.**                                                                                                                                                                                             |
+| Question (§8)           | Decision                                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PAT route or GitHub App | **PAT route.** One token per account in Railway. GITHUB.md Milestone 1 is superseded.                                                                                                                                                                                                                                                                                           |
+| What is account B       | Signed up with a work email, private contributions only, two repos under B's own username (not an org). **No repo names or commit headlines may be stored or shown**; counts are fine.                                                                                                                                                                                          |
+| Token scope             | **Account A: fine-grained, read-only**, repository-selected, 90-day expiry, `Metadata: read` only (the probe showed that is enough). **Account B: a classic token with the `read:user` scope and nothing else**, because GitHub only splits private-repo work by type for that scope and fine-grained tokens cannot carry it. It cannot read code. **No classic `repo` token.** |
+| Default branch or all   | **Default branch only.**                                                                                                                                                                                                                                                                                                                                                        |
+| "Today" day             | **GitHub's own day, which the probe showed is a UTC calendar date** (decided 2026-10-10 after sub-day windows proved not to be honoured). Not `Europe/London`. The page says so.                                                                                                                                                                                                |
+| What counts as activity | **Contributions, split by type**: commits, PRs opened, PR reviews, issues opened, plus an `unsplit` bucket for what a token cannot see. Labelled "contributions", never "commits", for totals.                                                                                                                                                                                  |
+| Backfill depth          | **From 2026-01-01.**                                                                                                                                                                                                                                                                                                                                                            |
 
 Consequences that change the research above:
 
 - **Reading.** Instead of reading commit history for every account, the worker makes one
-  `contributionsCollection(from, to)` call per **London day** per account and stores the
+  `contributionsCollection(from, to)` call per **UTC date** per account (exactly
+  `00:00:00Z` to `23:59:59Z`; never a London-day window, which spans two dates and
+  double-counts) and stores the
   four per-type totals (`totalCommitContributions`, `totalPullRequestContributions`,
   `totalPullRequestReviewContributions`, `totalIssueContributions`) plus
   `restrictedContributionsCount` as `unsplit`. Only account A additionally reads
@@ -70,11 +72,25 @@ have no equivalent). It runs the probe with `--audit-exposure`, which also repor
 whether that token can read any repository, organisation, PR or issue _name_, as yes/no
 and counts, never the names. Its report is counts, booleans and timestamps only.
 
-**Still unverified until the probe (#74) runs:** whether sub-day `from`/`to` windows are
-honoured for commit contributions (if not, B's commit count uses GitHub's own day
-bucketing and the page says so); whether per-type totals include private-repo work at
-`Metadata: read` only; whether the expiry header is present on fine-grained tokens;
-whether B's totals appear with its "Private contributions" profile setting off.
+**Probe findings (2026-10-10, #74).** Counts and booleans only; B's totals are not
+recorded here because this repository is public.
+
+- **Expiry header: present** on fine-grained and classic tokens
+  (`github-authentication-token-expiration`), so `token_expires_at` can come from it.
+- **Sub-day windows are not honoured.** Counts are bucketed by **UTC calendar date**: a
+  half-day window returns the whole date, and a window straddling midnight returns the
+  sum of both dates it touches. The worker must query single UTC dates.
+- **A (fine-grained, `Metadata: read` only):** per-type totals visible, `unsplit` was 0.
+- **B, fine-grained or classic `repo`:** private work came back as one `unsplit` lump with
+  the typed totals at zero. **B, classic `read:user` only:** the typed split appears and
+  `unsplit` is 0. This matches the schema note "Contributions in private and internal
+  repositories are only included with the optional `read:user` scope".
+- **What a `read:user`-only token cannot read** (exposure audit): no repository name
+  (the per-repo commit breakdown came back empty), no PR or issue title (every item was
+  null), no private repository list, no organisations (`INSUFFICIENT_SCOPES`), no email
+  addresses. It can read the authenticated profile's private _counts_ (`GET /user`).
+- B's "Private contributions" profile setting is on (an unsplit count only exists when it
+  is). Behaviour with it off was not tested and is not needed.
 
 ---
 
