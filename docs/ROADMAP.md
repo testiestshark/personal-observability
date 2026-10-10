@@ -31,7 +31,7 @@ GitHub issues** — that is where to look when deciding what to do next.
 ## Next
 
 - GitHub activity (two accounts): decided and split into issues under #20; the token
-  probe is done (#74) and the schema (#75) and worker (#76) are next. Design and probe
+  probe is done (#74), the schema is written (#75) and the worker (#76) is next. Design and probe
   findings in
   [integrations/GITHUB_MULTI_ACCOUNT.md](integrations/GITHUB_MULTI_ACCOUNT.md);
   [integrations/GITHUB.md](integrations/GITHUB.md) is superseded.
