@@ -30,7 +30,7 @@ Anything not confirmed in a primary source is marked **unverified**.
 | Question (§8)           | Decision                                                                                                                                                                                                                                                                                                                                                                        |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | PAT route or GitHub App | **PAT route.** One token per account in Railway. GITHUB.md Milestone 1 is superseded.                                                                                                                                                                                                                                                                                           |
-| What is account B       | Signed up with a work email, private contributions only, two repos under B's own username (not an org). **No repo names or commit headlines may be stored or shown**; counts are fine.                                                                                                                                                                                          |
+| What is account B       | A separate account with private repositories; private contributions only. **No repo names or commit headlines may be stored or shown**; counts are fine.                                                                                                                                                                                                                        |
 | Token scope             | **Account A: fine-grained, read-only**, repository-selected, 90-day expiry, `Metadata: read` only (the probe showed that is enough). **Account B: a classic token with the `read:user` scope and nothing else**, because GitHub only splits private-repo work by type for that scope and fine-grained tokens cannot carry it. It cannot read code. **No classic `repo` token.** |
 | Default branch or all   | **Default branch only.**                                                                                                                                                                                                                                                                                                                                                        |
 | "Today" day             | **GitHub's own day, which the probe showed is a UTC calendar date** (decided 2026-10-10 after sub-day windows proved not to be honoured). Not `Europe/London`. The page says so.                                                                                                                                                                                                |
@@ -199,8 +199,8 @@ a classic token with the `read:user` scope and nothing else. `repo` is not used.
 | OAuth App                                   | Classic-style scopes.                                                                                                                                                                                                                                                                                                                                                                                        | No advantage over a PAT for a single owner.                                                                                                                   |
 
 **Recommendation:** one token per account, chosen per account by where that account
-commits. It is quite likely account B is a work/organisation account — in that case,
-check whether the org allows PATs at all [S13] before building anything. **Unverified
+commits. If account B commits to an organisation's repos, check whether the org
+allows PATs at all [S13] before building anything. **Unverified
 here:** SAML-SSO orgs may also require a token to be SSO-authorised; [S13] does not
 cover it.
 
@@ -381,7 +381,7 @@ create table public.github_daily_contributions (
 Notes:
 
 - Store only `messageHeadline`, not the full body: it's enough for a summary and keeps
-  less of a possibly-employer repo in a personal database. See §8.
+  less of a private repo in a personal database. See §8.
 - `github_daily_contributions` counts issues, PRs and reviews too, not just commits.
   Label it "GitHub contributions", never "commits".
 - An "account" is a connected GitHub user. GitHub.md's `github_installations` table
@@ -432,7 +432,7 @@ Kept as asked, for the record. Answer 3 later settled on fine-grained for A and 
 1. **PAT route vs GitHub App route.** Do you accept per-account tokens in Railway (this
    note), in place of GITHUB.md's GitHub App "Connect" flow for reading data? If yes,
    GITHUB.md Milestone 1 should be re-scoped or marked superseded.
-2. **What is account B?** If it commits to an employer's org: does the org allow PATs
+2. **What is account B?** If it commits to an organisation's repos: does the org allow PATs
    [S13], is it SAML-protected, and are you comfortable copying repo names and commit
    headlines into this app? The alternative is **counts only** for that account (turn on
    Private contributions [S17] and read just the calendar with a no-scope token).

@@ -151,7 +151,7 @@ Local Studio may be used to inspect and experiment, but the repository migration
 
 ### Running alongside another Supabase project on the same machine
 
-This machine also runs a work stack (`cmg_data_platform`). Both can run at once; three things keep them separate.
+This machine also runs a second, unrelated Supabase stack. Both can run at once; three things keep them separate.
 
 **1. Container names.** `project_id` in `supabase/config.toml` is the Docker container prefix for the _local_ stack — `supabase_db_personal_observability`, and so on. It is deliberately a readable name rather than the hosted project ref. It does **not** control which hosted project is linked: that lives in `supabase/.temp/project-ref` (gitignored) and still points at `ivdhucdiycnbgvdetagw`.
 
@@ -159,11 +159,11 @@ Changing `project_id` orphans the existing Docker volume, so the local database 
 
 **2. Ports.** The two stacks are on different ports, so neither blocks the other:
 
-|          | Personal (this repo) | Work (`cmg_data_platform`) |
-| -------- | -------------------- | -------------------------- |
-| API      | 54321                | 55321                      |
-| Postgres | 54322                | 55322                      |
-| Studio   | 54323                | 55323                      |
+|          | Personal (this repo) | Other stack |
+| -------- | -------------------- | ----------- |
+| API      | 54321                | 55321       |
+| Postgres | 54322                | 55322       |
+| Studio   | 54323                | 55323       |
 
 **3. CLI account.** The Supabase CLI is signed into one account at a time globally, which is what causes the 403s described below. To pin _this repo_ to the right account regardless of global login state, add a personal access token to `.env.local` (gitignored):
 
@@ -187,7 +187,7 @@ unexpected login role status 403: {"message":"Your account does not have the nec
 bunx supabase projects list
 ```
 
-If the output lists `cmg_database` / `Loadfinder` / `UK Route Planner` — and **not** `personal-observability` — the CLI is in the wrong account context and every call against `ivdhucdiycnbgvdetagw` will 403. Sometimes simply re-running the command flips the session back; when it doesn't, re-authenticate with `bunx supabase login`.
+If the output lists other projects and **not** `personal-observability` — the CLI is in the wrong account context and every call against `ivdhucdiycnbgvdetagw` will 403. Sometimes simply re-running the command flips the session back; when it doesn't, re-authenticate with `bunx supabase login`.
 
 **Workaround that avoids the account problem entirely:** connect straight to Postgres, bypassing the management API, using the hosted connection string from Dashboard → Project Settings → Database:
 
