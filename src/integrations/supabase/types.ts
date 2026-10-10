@@ -188,6 +188,103 @@ export type Database = {
         };
         Relationships: [];
       };
+      fitness_exercises: {
+        Row: {
+          created_at: string;
+          exercise_template_id: string | null;
+          fitness_activity_id: string;
+          id: string;
+          notes: string | null;
+          position: number;
+          superset_id: number | null;
+          title: string | null;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          exercise_template_id?: string | null;
+          fitness_activity_id: string;
+          id?: string;
+          notes?: string | null;
+          position: number;
+          superset_id?: number | null;
+          title?: string | null;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          exercise_template_id?: string | null;
+          fitness_activity_id?: string;
+          id?: string;
+          notes?: string | null;
+          position?: number;
+          superset_id?: number | null;
+          title?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fitness_exercises_fitness_activity_id_fkey";
+            columns: ["fitness_activity_id"];
+            isOneToOne: false;
+            referencedRelation: "fitness_activities";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      fitness_sets: {
+        Row: {
+          created_at: string;
+          custom_metric: number | null;
+          distance_meters: number | null;
+          duration_seconds: number | null;
+          fitness_exercise_id: string;
+          id: string;
+          position: number;
+          reps: number | null;
+          rpe: number | null;
+          type: string;
+          user_id: string;
+          weight_kg: number | null;
+        };
+        Insert: {
+          created_at?: string;
+          custom_metric?: number | null;
+          distance_meters?: number | null;
+          duration_seconds?: number | null;
+          fitness_exercise_id: string;
+          id?: string;
+          position: number;
+          reps?: number | null;
+          rpe?: number | null;
+          type: string;
+          user_id?: string;
+          weight_kg?: number | null;
+        };
+        Update: {
+          created_at?: string;
+          custom_metric?: number | null;
+          distance_meters?: number | null;
+          duration_seconds?: number | null;
+          fitness_exercise_id?: string;
+          id?: string;
+          position?: number;
+          reps?: number | null;
+          rpe?: number | null;
+          type?: string;
+          user_id?: string;
+          weight_kg?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fitness_sets_fitness_exercise_id_fkey";
+            columns: ["fitness_exercise_id"];
+            isOneToOne: false;
+            referencedRelation: "fitness_exercises";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       sync_runs: {
         Row: {
           last_succeeded_at: string;
@@ -238,7 +335,7 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      replace_fitness_workout: { Args: { payload: Json }; Returns: string };
     };
     Enums: {
       [_ in never]: never;

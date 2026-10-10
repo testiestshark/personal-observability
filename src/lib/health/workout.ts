@@ -1,4 +1,4 @@
-import type { FitnessActivity, FitnessActivityDetail } from "./health.functions";
+import type { FitnessActivity, FitnessActivityDetail, FitnessExercise } from "./health.functions";
 import { formatActivityTime, formatActivityType } from "./format";
 import { formatDayLabel } from "@/lib/weight/units";
 
@@ -57,6 +57,32 @@ export function workoutHeader(activity: FitnessActivityDetail): WorkoutHeader {
     totalReps: formatCount(activity.totalReps),
     volume: activity.totalVolumeKg === null ? "—" : formatKg(activity.totalVolumeKg),
   };
+}
+
+/** Shown for an exercise Hevy sent without a title. */
+export const UNTITLED_EXERCISE = "Untitled exercise";
+
+export type WorkoutExercise = {
+  id: string;
+  title: string;
+  /** Null when absent or blank, so the page has one thing to check. */
+  notes: string | null;
+};
+
+/**
+ * The exercises as the page lists them: in the order they were done, with the
+ * untitled fallback applied. The server function already returns them ordered;
+ * sorting here as well keeps the page right if that ever changes. Sets are not
+ * shown yet (#82).
+ */
+export function workoutExercises(exercises: readonly FitnessExercise[]): WorkoutExercise[] {
+  return [...exercises]
+    .sort((a, b) => a.position - b.position)
+    .map((exercise) => ({
+      id: exercise.id,
+      title: exercise.title?.trim() || UNTITLED_EXERCISE,
+      notes: exercise.notes?.trim() || null,
+    }));
 }
 
 export type ActivityDetailKind = "hevy-strength" | "unsupported";

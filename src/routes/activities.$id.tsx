@@ -7,7 +7,7 @@ import {
   type FitnessActivityDetail,
   getFitnessActivity,
 } from "@/lib/health/health.functions";
-import { activityDetailKind, workoutHeader } from "@/lib/health/workout";
+import { activityDetailKind, workoutExercises, workoutHeader } from "@/lib/health/workout";
 
 export const Route = createFileRoute("/activities/$id")({
   head: () => ({
@@ -51,6 +51,7 @@ function BackToDay({ day }: { day: string }) {
 
 function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
   const header = workoutHeader(activity);
+  const exercises = workoutExercises(activity.exercises);
   const stats = [
     { label: "Duration", value: header.duration },
     { label: "Active sets", value: header.activeSets },
@@ -75,6 +76,30 @@ function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
             </p>
           </div>
         ))}
+      </section>
+
+      <section aria-labelledby="exercises-heading" className="mt-6">
+        <h2 id="exercises-heading" className="mb-3 font-display text-lg text-foreground">
+          Exercises
+        </h2>
+        {exercises.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs text-muted-foreground">
+            No exercises recorded for this workout
+          </div>
+        ) : (
+          <ol className="space-y-3">
+            {exercises.map((exercise) => (
+              <li key={exercise.id} className="rounded-2xl border border-border bg-card p-4 md:p-5">
+                <h3 className="text-sm font-medium text-foreground">{exercise.title}</h3>
+                {exercise.notes && (
+                  <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
+                    {exercise.notes}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
     </>
   );

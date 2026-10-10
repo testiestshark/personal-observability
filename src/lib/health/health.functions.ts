@@ -35,11 +35,38 @@ export type FitnessActivity = {
   totalReps: number | null;
 };
 
-/** One activity for its detail page: the day-view fields plus what the header needs. */
+/** One set of an exercise. Hevy stores weights in kilograms and distances in metres. */
+export type FitnessSet = {
+  id: string;
+  position: number;
+  type: string;
+  weightKg: number | null;
+  reps: number | null;
+  rpe: number | null;
+  distanceMeters: number | null;
+  durationSeconds: number | null;
+  customMetric: number | null;
+};
+
+/** One exercise within a workout, with its sets nested. */
+export type FitnessExercise = {
+  id: string;
+  position: number;
+  title: string | null;
+  notes: string | null;
+  supersetId: number | null;
+  sets: FitnessSet[];
+};
+
+/**
+ * One activity for its detail page: the day-view fields plus what the header
+ * needs, and its exercises (ordered by position) with their sets nested.
+ */
 export type FitnessActivityDetail = FitnessActivity & {
   localDay: string;
   activeSets: number | null;
   totalVolumeKg: number | null;
+  exercises: FitnessExercise[];
 };
 
 async function requireUser() {
@@ -142,10 +169,16 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
     const { data: row, error } = await supabase
       .from("fitness_activities")
       .select(
-        "id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg",
+        `id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg,
+        fitness_exercises (
+          id, position, title, notes, superset_id,
+          fitness_sets (id, position, type, weight_kg, reps, rpe, distance_meters, duration_seconds, custom_metric)
+        )`,
       )
       .eq("user_id", userId)
       .eq("id", data.id)
+      .order("position", { referencedTable: "fitness_exercises", ascending: true })
+      .order("position", { referencedTable: "fitness_exercises.fitness_sets", ascending: true })
       .maybeSingle();
 
     if (error) throw new Error(error.message);
@@ -156,6 +189,24 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
       localDay: row.local_day,
       activeSets: row.active_sets,
       totalVolumeKg: row.total_volume_kg,
+      exercises: row.fitness_exercises.map((exercise) => ({
+        id: exercise.id,
+        position: exercise.position,
+        title: exercise.title,
+        notes: exercise.notes,
+        supersetId: exercise.superset_id,
+        sets: exercise.fitness_sets.map((set) => ({
+          id: set.id,
+          position: set.position,
+          type: set.type,
+          weightKg: set.weight_kg,
+          reps: set.reps,
+          rpe: set.rpe,
+          distanceMeters: set.distance_meters,
+          durationSeconds: set.duration_seconds,
+          customMetric: set.custom_metric,
+        })),
+      })),
     };
   });
 
