@@ -9,13 +9,20 @@ or worker is built:
   4. Does the account's profile setting change what B's totals show? (recorded, asked
      by the wizard; the probe only reports what it sees)
   5. Is A's restricted (unsplit) count zero?
+  6. Which OAuth scopes does a classic token really carry? (B needs read:user and
+     nothing else; the header names every scope, so a stray `repo` is caught.)
+  7. With `--audit-exposure`: can this token read any repository, organisation, PR or
+     issue NAME? Answered as counts and yes/no, never as the names themselves.
 
-Privacy: this script prints counts, booleans and timestamps only. It never selects a
-repository name, commit message, URL or author field, and the counts-only account (B)
-is never asked about repositories at all. Standard library only, like the Hevy worker.
+Privacy: this script prints counts, booleans and timestamps only. The probe proper
+never selects a repository name, commit message, URL or author field, and the
+counts-only account (B) is never asked about repositories at all. The exposure audit
+is the one deliberate exception: it asks for names so it can say whether they are
+readable, keeps only "was a non-empty string returned", and discards the value at once.
+Standard library only, like the Hevy worker.
 
 Run via scripts/github/token-wizard.sh, or directly:
-    python scripts/github/github_probe.py --env-file .env.local
+    python scripts/github/github_probe.py --env-file .env.local [--audit-exposure]
 """
 
 from __future__ import annotations
@@ -34,7 +41,12 @@ from zoneinfo import ZoneInfo
 
 LONDON = ZoneInfo("Europe/London")
 GRAPHQL_URL = "https://api.github.com/graphql"
+REST_URL = "https://api.github.com"
 EXPIRY_HEADER = "github-authentication-token-expiration"
+# Classic tokens list their scopes here; fine-grained tokens send no such header.
+SCOPES_HEADER = "x-oauth-scopes"
+# B's classic token must carry exactly this and nothing else (#20, 2026-10-10).
+EXPECTED_SCOPES = frozenset({"read:user"})
 # #20: backfill starts here, and one contributionsCollection call spans at most a year.
 BACKFILL_START = datetime(2026, 1, 1, tzinfo=LONDON)
 RECENT_DAYS = 30
@@ -77,6 +89,70 @@ query($id: ID!, $since: GitTimestamp!) {
 """
 
 
+# ── exposure audit queries ────────────────────────────────────────────────────
+# These DO select name fields, on purpose: the point is to learn whether this token can
+# read them. Only "was a non-empty string returned" is kept; see exposure_audit().
+
+AUDIT_COMMITS_QUERY = """
+query($from: DateTime!, $to: DateTime!) {
+  viewer {
+    contributionsCollection(from: $from, to: $to) {
+      commitContributionsByRepository(maxRepositories: 100) {
+        repository { isPrivate nameWithOwner }
+        contributions { totalCount }
+      }
+    }
+  }
+}
+"""
+
+AUDIT_PULL_REQUESTS_QUERY = """
+query($from: DateTime!, $to: DateTime!) {
+  viewer {
+    contributionsCollection(from: $from, to: $to) {
+      pullRequestContributions(first: 50) {
+        nodes { pullRequest { title repository { isPrivate } } }
+      }
+    }
+  }
+}
+"""
+
+AUDIT_ISSUES_QUERY = """
+query($from: DateTime!, $to: DateTime!) {
+  viewer {
+    contributionsCollection(from: $from, to: $to) {
+      issueContributions(first: 50) {
+        nodes { issue { title repository { isPrivate } } }
+      }
+    }
+  }
+}
+"""
+
+AUDIT_PRIVATE_REPOS_QUERY = """
+query {
+  viewer {
+    repositories(first: 50, privacy: PRIVATE, ownerAffiliations: [OWNER]) {
+      totalCount
+      nodes { nameWithOwner }
+    }
+  }
+}
+"""
+
+AUDIT_ORGANISATIONS_QUERY = """
+query {
+  viewer {
+    organizations(first: 50) {
+      totalCount
+      nodes { login }
+    }
+  }
+}
+"""
+
+
 class ProbeError(Exception):
     """A failure with a message that is safe to print."""
 
@@ -104,6 +180,10 @@ class AccountSpec:
 
 class GraphQLClient(Protocol):
     def query(self, query: str, variables: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, str]]: ...
+
+
+class AuditClient(GraphQLClient, Protocol):
+    def rest_get(self, path: str) -> tuple[int, Any]: ...
 
 
 # ── pure helpers (unit-tested) ────────────────────────────────────────────────
@@ -173,6 +253,36 @@ def scrub(text: str, secrets: list[str]) -> str:
     return text
 
 
+def parse_scopes(headers: dict[str, str]) -> list[str] | None:
+    """The token's OAuth scopes, or None for a token that sends no scopes header."""
+    raw = headers.get(SCOPES_HEADER)
+    if raw is None:
+        return None
+    return sorted(part.strip() for part in raw.split(",") if part.strip())
+
+
+def scope_lines(scopes: list[str] | None) -> list[str]:
+    if scopes is None:
+        return ["token type: fine-grained or app token (no OAuth scopes header)"]
+    shown = ", ".join(scopes) if scopes else "none"
+    extra = sorted(set(scopes) - EXPECTED_SCOPES)
+    lines = [f"token type: classic; scopes: {shown}"]
+    if not extra:
+        lines.append("scope check: exactly what B needs, nothing more")
+        return lines
+    lines.append(f"scope check: EXTRA scope(s) beyond read:user: {', '.join(extra)}")
+    if any(s == "repo" or s.startswith("repo:") or s.startswith("write:") for s in extra):
+        lines.append("  a leaked token could change or read code: remake it with read:user only")
+    else:
+        lines.append("  remake the token with read:user only")
+    return lines
+
+
+def named(value: Any) -> bool:
+    """Whether a name field came back as a real string. The value itself is dropped."""
+    return isinstance(value, str) and value.strip() != ""
+
+
 # ── GitHub ────────────────────────────────────────────────────────────────────
 
 
@@ -204,6 +314,25 @@ class GitHubClient:
             kinds = sorted({str(e.get("type", "UNKNOWN")) for e in payload["errors"]})
             raise ProbeError("GraphQL error type(s): " + ", ".join(kinds))
         return payload["data"], headers
+
+    def rest_get(self, path: str) -> tuple[int, Any]:
+        """(HTTP status, parsed JSON or None). A 4xx is an answer here, not an error."""
+        request = Request(
+            REST_URL + path,
+            headers={
+                "Authorization": f"Bearer {self._token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "personal-observability-github-probe",
+            },
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=30) as response:
+                return response.status, json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            return error.code, None
+        except URLError as error:
+            raise ProbeError(f"could not reach GitHub ({type(error.reason).__name__})") from None
 
 
 def fetch_totals(client: GraphQLClient, start: datetime, end_exclusive: datetime) -> Totals:
@@ -245,6 +374,7 @@ def probe_account(client: GraphQLClient, spec: AccountSpec, now: datetime) -> tu
             lines.append("stopping: this token is for a different account than the wizard was told")
             return lines, False
 
+        lines.extend(scope_lines(parse_scopes(headers)))
         expiry = headers.get(EXPIRY_HEADER)
         lines.append(f"token expiry header: {'present, ' + expiry if expiry else 'ABSENT'}")
 
@@ -312,6 +442,106 @@ def probe_account(client: GraphQLClient, spec: AccountSpec, now: datetime) -> tu
         return lines, False
 
 
+def exposure_audit(client: AuditClient, now: datetime) -> tuple[list[str], int]:
+    """What can this token read BY NAME? Returns (report lines, places names were readable).
+
+    Every check is isolated: a failure in one is reported and the rest still run. The
+    names themselves are reduced to a count of non-empty strings and never stored or
+    printed, so the report is safe to paste anywhere.
+    """
+    lines = ["-- exposure audit: can this token read names? (values never shown) --"]
+    window = {"from": iso_z(BACKFILL_START), "to": iso_z(now)}
+    readable_in: list[str] = []
+
+    def record(label: str, summary: str, readable: int) -> None:
+        lines.append(f"{label}: {summary}")
+        if readable:
+            readable_in.append(label)
+
+    def guarded(label: str, run: Any) -> None:
+        try:
+            run()
+        except ProbeError as error:
+            lines.append(f"{label}: not available ({error})")
+        except (KeyError, TypeError):
+            lines.append(f"{label}: not available (unexpected response shape)")
+
+    def commits() -> None:
+        data, _ = client.query(AUDIT_COMMITS_QUERY, window)
+        items = data["viewer"]["contributionsCollection"]["commitContributionsByRepository"]
+        private = sum(1 for i in items if (i.get("repository") or {}).get("isPrivate"))
+        readable = sum(1 for i in items if named((i.get("repository") or {}).get("nameWithOwner")))
+        capped = " (list capped at 100)" if len(items) >= 100 else ""
+        record(
+            "commit breakdown by repository",
+            f"{len(items)} repos listed{capped}, {private} private, repo name readable on {readable}",
+            readable,
+        )
+
+    def nodes_check(label: str, query: str, field: str, inner: str) -> None:
+        data, _ = client.query(query, window)
+        nodes = data["viewer"]["contributionsCollection"][field]["nodes"]
+        private = sum(
+            1 for n in nodes if ((n.get(inner) or {}).get("repository") or {}).get("isPrivate")
+        )
+        readable = sum(1 for n in nodes if named((n.get(inner) or {}).get("title")))
+        record(label, f"{len(nodes)} listed, {private} in private repos, title readable on {readable}", readable)
+
+    def private_repos() -> None:
+        data, _ = client.query(AUDIT_PRIVATE_REPOS_QUERY)
+        block = data["viewer"]["repositories"]
+        readable = sum(1 for n in block["nodes"] if named(n.get("nameWithOwner")))
+        record(
+            "private repositories (GraphQL)",
+            f"total {block['totalCount']}, name readable on {readable}",
+            readable,
+        )
+
+    def organisations() -> None:
+        data, _ = client.query(AUDIT_ORGANISATIONS_QUERY)
+        block = data["viewer"]["organizations"]
+        readable = sum(1 for n in block["nodes"] if named(n.get("login")))
+        record("organisations", f"total {block['totalCount']}, name readable on {readable}", readable)
+
+    def rest_profile() -> None:
+        status, body = client.rest_get("/user")
+        fields = isinstance(body, dict) and "total_private_repos" in body
+        record("REST /user", f"HTTP {status}, private profile fields present: {'yes' if fields else 'no'}", 0)
+
+    def rest_private_repos() -> None:
+        status, body = client.rest_get("/user/repos?visibility=private&per_page=50")
+        items = body if isinstance(body, list) else []
+        readable = sum(1 for i in items if named(i.get("full_name")) or named(i.get("name")))
+        record("REST /user/repos (private)", f"HTTP {status}, {len(items)} returned, name readable on {readable}", readable)
+
+    def rest_emails() -> None:
+        status, _ = client.rest_get("/user/emails")
+        record("REST /user/emails", f"HTTP {status}", 0)
+
+    guarded("commit breakdown by repository", commits)
+    guarded(
+        "pull request contributions",
+        lambda: nodes_check(
+            "pull request contributions", AUDIT_PULL_REQUESTS_QUERY, "pullRequestContributions", "pullRequest"
+        ),
+    )
+    guarded(
+        "issue contributions",
+        lambda: nodes_check("issue contributions", AUDIT_ISSUES_QUERY, "issueContributions", "issue"),
+    )
+    guarded("private repositories (GraphQL)", private_repos)
+    guarded("organisations", organisations)
+    guarded("REST /user", rest_profile)
+    guarded("REST /user/repos (private)", rest_private_repos)
+    guarded("REST /user/emails", rest_emails)
+
+    if readable_in:
+        lines.append("RESULT: names ARE readable by this token in: " + "; ".join(readable_in))
+    else:
+        lines.append("RESULT: no repository, organisation, PR or issue name was readable by this token")
+    return lines, len(readable_in)
+
+
 def specs_from(values: dict[str, str]) -> list[AccountSpec]:
     specs = []
     for label, detail in (("A", "full"), ("B", "counts_only")):
@@ -331,6 +561,11 @@ def main(argv: list[str] | None = None) -> int:
         default="unknown",
         help="B's 'Private contributions' profile setting, recorded in the report (check 4)",
     )
+    parser.add_argument(
+        "--audit-exposure",
+        action="store_true",
+        help="also report whether each token can read repo/org/PR/issue names (yes/no, never the names)",
+    )
     args = parser.parse_args(argv)
 
     values = {**load_env_file(args.env_file), **os.environ}
@@ -348,10 +583,18 @@ def main(argv: list[str] | None = None) -> int:
     print(f"B 'Private contributions' profile setting (as reported by you): {args.b_private_setting}")
     all_ok = True
     for spec in specs:
-        lines, ok = probe_account(GitHubClient(spec.token), spec, now)
+        client = GitHubClient(spec.token)
+        lines, ok = probe_account(client, spec, now)
         print()
         print("\n".join(lines))
         all_ok = all_ok and ok
+        if args.audit_exposure and ok:
+            try:
+                audit_lines, _ = exposure_audit(client, now)
+            except ProbeError as error:
+                audit_lines = [f"exposure audit FAILED: {scrub(str(error), [spec.token])}"]
+            print()
+            print("\n".join(scrub(line, [spec.token]) for line in audit_lines))
     return 0 if all_ok else 1
 
 
