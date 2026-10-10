@@ -10,6 +10,7 @@ import {
   activityDetailKind,
   formatKg,
   formatWorkoutDuration,
+  groupSupersets,
   isActivityLinked,
   UNTITLED_EXERCISE,
   workoutExercises,
@@ -364,6 +365,136 @@ describe("workoutExercises: sets", () => {
     // The second exercise starts again at 1: numbering never carries across exercises.
     expect(items[1]?.sets.map((row) => row.label)).toEqual(["1"]);
     expect(items[1]?.sets[0]?.measurements).toEqual(["20 kg x 12"]);
+  });
+});
+
+describe("workoutExercises: superset id", () => {
+  it("carries the superset id through, null when the exercise is not in one", () => {
+    const items = workoutExercises([
+      exercise({ position: 0, supersetId: null }),
+      exercise({ position: 1, supersetId: 4 }),
+    ]);
+    expect(items.map((item) => item.supersetId)).toEqual([null, 4]);
+  });
+});
+
+describe("groupSupersets", () => {
+  /** Exercises at positions 0..n-1 with the given superset ids, titled by position. */
+  const withIds = (...ids: (number | null)[]) =>
+    workoutExercises(
+      ids.map((supersetId, position) =>
+        exercise({ position, title: `Exercise ${position}`, supersetId }),
+      ),
+    );
+
+  /** A compact view of the blocks: the label and titles of each, or the lone title. */
+  const shape = (blocks: ReturnType<typeof groupSupersets>) =>
+    blocks.map((block) =>
+      block.kind === "superset"
+        ? { label: block.label, titles: block.exercises.map((item) => item.title) }
+        : block.exercise.title,
+    );
+
+  it("leaves exercises with no superset id ungrouped, in order", () => {
+    const blocks = groupSupersets(withIds(null, null, null));
+    expect(blocks.every((block) => block.kind === "single")).toBe(true);
+    expect(shape(blocks)).toEqual(["Exercise 0", "Exercise 1", "Exercise 2"]);
+  });
+
+  it("groups consecutive exercises sharing a superset id under one label", () => {
+    expect(shape(groupSupersets(withIds(7, 7)))).toEqual([
+      { label: "Superset A", titles: ["Exercise 0", "Exercise 1"] },
+    ]);
+  });
+
+  it("keeps the ungrouped exercises around a group where they were done", () => {
+    expect(shape(groupSupersets(withIds(null, 3, 3, null)))).toEqual([
+      "Exercise 0",
+      { label: "Superset A", titles: ["Exercise 1", "Exercise 2"] },
+      "Exercise 3",
+    ]);
+  });
+
+  it("letters groups A, B, C in the order they appear, whatever the ids are", () => {
+    const blocks = groupSupersets(withIds(9, 9, null, 2, 2, 5, 5));
+    expect(blocks.flatMap((block) => (block.kind === "superset" ? [block.letter] : []))).toEqual([
+      "A",
+      "B",
+      "C",
+    ]);
+  });
+
+  it("does not merge non-consecutive exercises that share a superset id", () => {
+    // Same id either side of an exercise that is not in the superset: two groups.
+    expect(shape(groupSupersets(withIds(1, 1, null, 1, 1)))).toEqual([
+      { label: "Superset A", titles: ["Exercise 0", "Exercise 1"] },
+      "Exercise 2",
+      { label: "Superset B", titles: ["Exercise 3", "Exercise 4"] },
+    ]);
+  });
+
+  it("starts a new group when the id changes between neighbours", () => {
+    expect(shape(groupSupersets(withIds(1, 1, 2, 2)))).toEqual([
+      { label: "Superset A", titles: ["Exercise 0", "Exercise 1"] },
+      { label: "Superset B", titles: ["Exercise 2", "Exercise 3"] },
+    ]);
+  });
+
+  it("groups three or more exercises (a tri-set or giant set)", () => {
+    expect(shape(groupSupersets(withIds(6, 6, 6)))).toEqual([
+      { label: "Superset A", titles: ["Exercise 0", "Exercise 1", "Exercise 2"] },
+    ]);
+  });
+
+  it("treats a superset id of 0 as a real id, not as 'none'", () => {
+    expect(shape(groupSupersets(withIds(0, 0)))).toEqual([
+      { label: "Superset A", titles: ["Exercise 0", "Exercise 1"] },
+    ]);
+  });
+
+  it("does not label an exercise alone with its id: a superset needs a partner", () => {
+    // Hevy can leave an id behind when the other half is removed.
+    const blocks = groupSupersets(withIds(8, null, 3, 3));
+    expect(shape(blocks)).toEqual([
+      "Exercise 0",
+      "Exercise 1",
+      { label: "Superset A", titles: ["Exercise 2", "Exercise 3"] },
+    ]);
+  });
+
+  it("cycles through four colours, one per group in order, then repeats", () => {
+    const blocks = groupSupersets(withIds(1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6));
+    const colours = blocks.flatMap((block) => (block.kind === "superset" ? [block.colour] : []));
+    expect(colours).toEqual([0, 1, 2, 3, 0, 1]);
+  });
+
+  it("colours by group, not by exercise or id, so an ungrouped exercise skips none", () => {
+    const blocks = groupSupersets(withIds(40, 40, null, 12, 12));
+    const colours = blocks.flatMap((block) => (block.kind === "superset" ? [block.colour] : []));
+    expect(colours).toEqual([0, 1]);
+  });
+
+  it("continues the letters past Z rather than running out", () => {
+    // 27 two-exercise groups, ids 0..26.
+    const ids = Array.from({ length: 27 }, (_, group) => [group, group]).flat();
+    const labels = groupSupersets(withIds(...ids)).flatMap((block) =>
+      block.kind === "superset" ? [block.letter] : [],
+    );
+    expect(labels[0]).toBe("A");
+    expect(labels[25]).toBe("Z");
+    expect(labels[26]).toBe("AA");
+    expect(new Set(labels).size).toBe(27);
+  });
+
+  it("returns no blocks for a workout with no exercises", () => {
+    expect(groupSupersets([])).toEqual([]);
+  });
+
+  it("does not reorder or change the exercises it was given", () => {
+    const input = withIds(1, 1, null);
+    const before = JSON.stringify(input);
+    groupSupersets(input);
+    expect(JSON.stringify(input)).toBe(before);
   });
 });
 
