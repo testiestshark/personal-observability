@@ -7,7 +7,26 @@ import {
   type FitnessActivityDetail,
   getFitnessActivity,
 } from "@/lib/health/health.functions";
-import { activityDetailKind, workoutExercises, workoutHeader } from "@/lib/health/workout";
+import {
+  activityDetailKind,
+  groupSupersets,
+  type WorkoutExercise,
+  workoutExercises,
+  workoutHeader,
+} from "@/lib/health/workout";
+
+/**
+ * The left rule's colour for each superset colour index: one class per colour
+ * (SUPERSET_COLOUR_COUNT), written out in full so Tailwind sees every class.
+ * chart-2 to chart-5, not chart-1: in the dark theme chart-1 is a deep blue that
+ * barely separates from the card.
+ */
+const SUPERSET_RULE_CLASSES: readonly string[] = [
+  "border-chart-2",
+  "border-chart-3",
+  "border-chart-4",
+  "border-chart-5",
+];
 
 export const Route = createFileRoute("/activities/$id")({
   head: () => ({
@@ -51,7 +70,7 @@ function BackToDay({ day }: { day: string }) {
 
 function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
   const header = workoutHeader(activity);
-  const exercises = workoutExercises(activity.exercises);
+  const blocks = groupSupersets(workoutExercises(activity.exercises));
   const stats = [
     { label: "Duration", value: header.duration },
     { label: "Active sets", value: header.activeSets },
@@ -82,44 +101,68 @@ function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
         <h2 id="exercises-heading" className="mb-3 font-display text-lg text-foreground">
           Exercises
         </h2>
-        {exercises.length === 0 ? (
+        {blocks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs text-muted-foreground">
             No exercises recorded for this workout
           </div>
         ) : (
           <ol className="space-y-3">
-            {exercises.map((exercise) => (
-              <li key={exercise.id} className="rounded-2xl border border-border bg-card p-4 md:p-5">
-                <h3 className="text-sm font-medium text-foreground">{exercise.title}</h3>
-                {exercise.notes && (
-                  <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">
-                    {exercise.notes}
+            {blocks.map((block) =>
+              block.kind === "single" ? (
+                <li key={block.exercise.id}>
+                  <ExerciseCard exercise={block.exercise} />
+                </li>
+              ) : (
+                <li
+                  key={block.label}
+                  className={`border-l-4 pl-3 ${SUPERSET_RULE_CLASSES[block.colour]}`}
+                >
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {block.label}
                   </p>
-                )}
-                {exercise.sets.length > 0 && (
-                  <ol aria-label={`${exercise.title} sets`} className="mt-3 space-y-1.5">
-                    {exercise.sets.map((set) => (
-                      <li key={set.id} className="flex items-baseline gap-3 text-sm">
-                        <span
-                          className={`w-6 shrink-0 text-center text-xs font-medium tabular-nums ${
-                            set.marker ? "text-primary" : "text-muted-foreground"
-                          }`}
-                        >
-                          {set.label}
-                        </span>
-                        <span className="min-w-0 text-foreground">
-                          {set.measurements.length > 0 ? set.measurements.join(" · ") : "—"}
-                        </span>
+                  <ol aria-label={`${block.label} exercises`} className="space-y-3">
+                    {block.exercises.map((exercise) => (
+                      <li key={exercise.id}>
+                        <ExerciseCard exercise={exercise} />
                       </li>
                     ))}
                   </ol>
-                )}
-              </li>
-            ))}
+                </li>
+              ),
+            )}
           </ol>
         )}
       </section>
     </>
+  );
+}
+
+function ExerciseCard({ exercise }: { exercise: WorkoutExercise }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 md:p-5">
+      <h3 className="text-sm font-medium text-foreground">{exercise.title}</h3>
+      {exercise.notes && (
+        <p className="mt-1 whitespace-pre-line text-xs text-muted-foreground">{exercise.notes}</p>
+      )}
+      {exercise.sets.length > 0 && (
+        <ol aria-label={`${exercise.title} sets`} className="mt-3 space-y-1.5">
+          {exercise.sets.map((set) => (
+            <li key={set.id} className="flex items-baseline gap-3 text-sm">
+              <span
+                className={`w-6 shrink-0 text-center text-xs font-medium tabular-nums ${
+                  set.marker ? "text-primary" : "text-muted-foreground"
+                }`}
+              >
+                {set.label}
+              </span>
+              <span className="min-w-0 text-foreground">
+                {set.measurements.length > 0 ? set.measurements.join(" · ") : "—"}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 

@@ -164,6 +164,8 @@ export type WorkoutExercise = {
   title: string;
   /** Null when absent or blank, so the page has one thing to check. */
   notes: string | null;
+  /** Exercises that share a value, back to back, are one superset. Null when in none. */
+  supersetId: number | null;
   sets: WorkoutSetRow[];
 };
 
@@ -180,8 +182,76 @@ export function workoutExercises(exercises: readonly FitnessExercise[]): Workout
       id: exercise.id,
       title: exercise.title?.trim() || UNTITLED_EXERCISE,
       notes: exercise.notes?.trim() || null,
+      supersetId: exercise.supersetId,
       sets: workoutSets(exercise.sets),
     }));
+}
+
+/** How many colours superset groups cycle through. */
+export const SUPERSET_COLOUR_COUNT = 4;
+
+export type WorkoutBlock =
+  | { kind: "single"; exercise: WorkoutExercise }
+  | {
+      kind: "superset";
+      /**
+       * "Superset A", "Superset B"... in the order the groups appear, "AA" after
+       * "Z". The letter carries the meaning; colour only reinforces it.
+       */
+      label: string;
+      /** 0 to SUPERSET_COLOUR_COUNT - 1; the page maps it to a theme token. */
+      colour: number;
+      exercises: WorkoutExercise[];
+    };
+
+/** 0 is "A", 25 is "Z", 26 is "AA": the way a spreadsheet names its columns. */
+function groupLetter(index: number): string {
+  let letter = "";
+  for (let rest = index; rest >= 0; rest = Math.floor(rest / 26) - 1) {
+    letter = String.fromCharCode(65 + (rest % 26)) + letter;
+  }
+  return letter;
+}
+
+/**
+ * The exercises as the page renders them: ungrouped ones on their own, and runs
+ * of exercises that share a superset id as one labelled group.
+ *
+ * Only consecutive exercises group. Hevy ids supersets per workout and the same
+ * id can sit either side of an exercise that is not part of it; that is two
+ * supersets, not one group with a hole in it. A run of one is not a superset
+ * either, so it stays ungrouped and takes no letter: Hevy can leave an id
+ * behind when the other half is removed.
+ *
+ * Letters and colours follow the order groups appear, not the ids, which are
+ * arbitrary numbers. Expects exercises already in workout order, as
+ * `workoutExercises` returns them.
+ */
+export function groupSupersets(exercises: readonly WorkoutExercise[]): WorkoutBlock[] {
+  const blocks: WorkoutBlock[] = [];
+  let groupsSoFar = 0;
+  let index = 0;
+  while (index < exercises.length) {
+    const first = exercises[index]!;
+    let end = index + 1;
+    if (first.supersetId !== null) {
+      while (end < exercises.length && exercises[end]!.supersetId === first.supersetId) end++;
+    }
+    const run = exercises.slice(index, end);
+    if (first.supersetId !== null && run.length > 1) {
+      blocks.push({
+        kind: "superset",
+        label: `Superset ${groupLetter(groupsSoFar)}`,
+        colour: groupsSoFar % SUPERSET_COLOUR_COUNT,
+        exercises: run,
+      });
+      groupsSoFar++;
+    } else {
+      blocks.push(...run.map((exercise) => ({ kind: "single" as const, exercise })));
+    }
+    index = end;
+  }
+  return blocks;
 }
 
 export type ActivityDetailKind = "hevy-strength" | "unsupported";
