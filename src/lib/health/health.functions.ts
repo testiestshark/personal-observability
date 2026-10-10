@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
+export const activityIdSchema = z.string().uuid();
+
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
 
 export type DailyHealth = {
@@ -21,6 +23,7 @@ export type DailyHealth = {
 
 export type FitnessActivity = {
   id: string;
+  source: "garmin" | "hevy";
   name: string | null;
   type: string;
   startedAt: string;
@@ -32,6 +35,13 @@ export type FitnessActivity = {
   totalReps: number | null;
 };
 
+/** One activity for its detail page: the day-view fields plus what the header needs. */
+export type FitnessActivityDetail = FitnessActivity & {
+  localDay: string;
+  activeSets: number | null;
+  totalVolumeKg: number | null;
+};
+
 async function requireUser() {
   // Server functions ship browser RPC stubs, so the server-only client must be
   // imported inside the handler path rather than at module scope.
@@ -40,6 +50,38 @@ async function requireUser() {
   const { data, error } = await supabase.auth.getUser();
   if (error || !data.user) throw new Error("Not signed in.");
   return { supabase, userId: data.user.id };
+}
+
+type FitnessActivityRow = {
+  id: string;
+  source: string;
+  activity_name: string | null;
+  activity_type: string;
+  started_at: string;
+  duration_seconds: number | null;
+  distance_meters: number | null;
+  calories_kcal: number | null;
+  average_heart_rate_bpm: number | null;
+  total_sets: number | null;
+  total_reps: number | null;
+};
+
+/** The day-view fields of a `fitness_activities` row; the detail query adds its own on top. */
+function toFitnessActivity(row: FitnessActivityRow): FitnessActivity {
+  return {
+    id: row.id,
+    // `fitness_activities_source_known` limits the column to these two values.
+    source: row.source as FitnessActivity["source"],
+    name: row.activity_name,
+    type: row.activity_type,
+    startedAt: row.started_at,
+    durationSeconds: row.duration_seconds,
+    distanceMeters: row.distance_meters,
+    caloriesKcal: row.calories_kcal,
+    averageHeartRateBpm: row.average_heart_rate_bpm,
+    totalSets: row.total_sets,
+    totalReps: row.total_reps,
+  };
 }
 
 export const getDailyHealth = createServerFn({ method: "GET" })
@@ -83,25 +125,38 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
     const { data: rows, error } = await supabase
       .from("fitness_activities")
       .select(
-        "id, activity_name, activity_type, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, total_reps",
+        "id, source, activity_name, activity_type, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, total_reps",
       )
       .eq("user_id", userId)
       .eq("local_day", data.day)
       .order("started_at", { ascending: false });
 
     if (error) throw new Error(error.message);
-    return (rows ?? []).map((row) => ({
-      id: row.id,
-      name: row.activity_name,
-      type: row.activity_type,
-      startedAt: row.started_at,
-      durationSeconds: row.duration_seconds,
-      distanceMeters: row.distance_meters,
-      caloriesKcal: row.calories_kcal,
-      averageHeartRateBpm: row.average_heart_rate_bpm,
-      totalSets: row.total_sets,
-      totalReps: row.total_reps,
-    }));
+    return (rows ?? []).map(toFitnessActivity);
+  });
+
+export const getFitnessActivity = createServerFn({ method: "GET" })
+  .validator((data: { id: string }) => ({ id: activityIdSchema.parse(data.id) }))
+  .handler(async ({ data }): Promise<FitnessActivityDetail | null> => {
+    const { supabase, userId } = await requireUser();
+    const { data: row, error } = await supabase
+      .from("fitness_activities")
+      .select(
+        "id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg",
+      )
+      .eq("user_id", userId)
+      .eq("id", data.id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!row) return null;
+
+    return {
+      ...toFitnessActivity(row),
+      localDay: row.local_day,
+      activeSets: row.active_sets,
+      totalVolumeKg: row.total_volume_kg,
+    };
   });
 
 export const getGarminSyncStatus = createServerFn({ method: "GET" }).handler(

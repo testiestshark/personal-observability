@@ -28,6 +28,7 @@ describe("health presentation", () => {
     expect(
       formatActivitySummary({
         id: "1",
+        source: "garmin",
         name: "Morning Run",
         type: "trail_running",
         startedAt: "2026-09-07T06:00:00Z",
