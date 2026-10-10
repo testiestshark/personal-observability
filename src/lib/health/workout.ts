@@ -194,9 +194,10 @@ export type WorkoutBlock =
   | { kind: "single"; exercise: WorkoutExercise }
   | {
       kind: "superset";
-      /** "A", "B", ... in the order the groups appear; "AA" after "Z". */
-      letter: string;
-      /** "Superset A": the letter carries the meaning, colour only reinforces it. */
+      /**
+       * "Superset A", "Superset B"... in the order the groups appear, "AA" after
+       * "Z". The letter carries the meaning; colour only reinforces it.
+       */
       label: string;
       /** 0 to SUPERSET_COLOUR_COUNT - 1; the page maps it to a theme token. */
       colour: number;
@@ -228,7 +229,7 @@ function groupLetter(index: number): string {
  */
 export function groupSupersets(exercises: readonly WorkoutExercise[]): WorkoutBlock[] {
   const blocks: WorkoutBlock[] = [];
-  let groups = 0;
+  let groupsSoFar = 0;
   let index = 0;
   while (index < exercises.length) {
     const first = exercises[index]!;
@@ -238,15 +239,13 @@ export function groupSupersets(exercises: readonly WorkoutExercise[]): WorkoutBl
     }
     const run = exercises.slice(index, end);
     if (first.supersetId !== null && run.length > 1) {
-      const letter = groupLetter(groups);
       blocks.push({
         kind: "superset",
-        letter,
-        label: `Superset ${letter}`,
-        colour: groups % SUPERSET_COLOUR_COUNT,
+        label: `Superset ${groupLetter(groupsSoFar)}`,
+        colour: groupsSoFar % SUPERSET_COLOUR_COUNT,
         exercises: run,
       });
-      groups++;
+      groupsSoFar++;
     } else {
       blocks.push(...run.map((exercise) => ({ kind: "single" as const, exercise })));
     }

@@ -417,10 +417,10 @@ describe("groupSupersets", () => {
 
   it("letters groups A, B, C in the order they appear, whatever the ids are", () => {
     const blocks = groupSupersets(withIds(9, 9, null, 2, 2, 5, 5));
-    expect(blocks.flatMap((block) => (block.kind === "superset" ? [block.letter] : []))).toEqual([
-      "A",
-      "B",
-      "C",
+    expect(blocks.flatMap((block) => (block.kind === "superset" ? [block.label] : []))).toEqual([
+      "Superset A",
+      "Superset B",
+      "Superset C",
     ]);
   });
 
@@ -478,11 +478,11 @@ describe("groupSupersets", () => {
     // 27 two-exercise groups, ids 0..26.
     const ids = Array.from({ length: 27 }, (_, group) => [group, group]).flat();
     const labels = groupSupersets(withIds(...ids)).flatMap((block) =>
-      block.kind === "superset" ? [block.letter] : [],
+      block.kind === "superset" ? [block.label] : [],
     );
-    expect(labels[0]).toBe("A");
-    expect(labels[25]).toBe("Z");
-    expect(labels[26]).toBe("AA");
+    expect(labels[0]).toBe("Superset A");
+    expect(labels[25]).toBe("Superset Z");
+    expect(labels[26]).toBe("Superset AA");
     expect(new Set(labels).size).toBe(27);
   });
 

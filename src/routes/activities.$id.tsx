@@ -114,7 +114,7 @@ function HevyWorkout({ activity }: { activity: FitnessActivityDetail }) {
                 </li>
               ) : (
                 <li
-                  key={block.exercises[0]?.id}
+                  key={block.label}
                   className={`border-l-4 pl-3 ${SUPERSET_RULE_CLASSES[block.colour]}`}
                 >
                   <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">

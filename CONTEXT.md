@@ -25,6 +25,9 @@ _Avoid_: Lift, movement
 **Set**:
 One performance of an exercise: its weight, reps and type, identified by its position within that exercise.
 
+**Superset**:
+Two or more consecutive exercises in a workout that share a Hevy `superset_id`. Lettered A, B, C in the order they appear, not by id. The same id either side of another exercise is two supersets, and a lone exercise carrying an id is not one.
+
 ### Energy
 
 **Calories eaten**:
