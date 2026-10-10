@@ -20,6 +20,10 @@ Keep the issues current as part of the job, not as a separate chore:
 - Found a problem you are not fixing right now? Open an issue labelled `needs-triage`,
   with the reasoning and a link to the file or commit it came from. A finding that only
   exists in a chat transcript is lost.
+- Opening an issue that comes off another one (a follow-up, a split-out ticket)? Put the
+  `parent` label on the issue it comes off, and start the child's body with
+  `Follow-up to #<parent>`. `parent` marks any issue that has issues hanging off it; see
+  [docs/agents/triage-labels.md](docs/agents/triage-labels.md#parent-issues).
 - Decided _not_ to do something? Record it in [docs/NON_GOALS.md](docs/NON_GOALS.md) with
   the date and the why, so it is not raised again later as an oversight.
 
