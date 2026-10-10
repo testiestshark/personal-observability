@@ -1,8 +1,14 @@
-import type { FitnessActivity, FitnessActivityDetail, FitnessExercise } from "./health.functions";
+import type {
+  FitnessActivity,
+  FitnessActivityDetail,
+  FitnessExercise,
+  FitnessSet,
+} from "./health.functions";
 import { formatActivityTime, formatActivityType } from "./format";
 import { formatDayLabel } from "@/lib/weight/units";
 
-const kgNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
+/** Up to two decimals, trailing zeros trimmed, thousands grouped. */
+const decimalNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
 
 /**
  * A weight in kilograms: up to two decimals, trailing zeros trimmed
@@ -10,7 +16,7 @@ const kgNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
  * Hevy stores kilograms and the workout view shows them as recorded.
  */
 export function formatKg(kilograms: number): string {
-  return `${kgNumber.format(kilograms)} kg`;
+  return `${decimalNumber.format(kilograms)} kg`;
 }
 
 /** "45 min" under an hour, "1h 05m" from an hour up; "—" when unknown. */
@@ -62,18 +68,110 @@ export function workoutHeader(activity: FitnessActivityDetail): WorkoutHeader {
 /** Shown for an exercise Hevy sent without a title. */
 export const UNTITLED_EXERCISE = "Untitled exercise";
 
+export type SetMarker = "W" | "D" | "F";
+
+const SET_MARKERS = new Map<string, SetMarker>([
+  ["warmup", "W"],
+  ["dropset", "D"],
+  ["failure", "F"],
+]);
+
+export type WorkoutSetRow = {
+  id: string;
+  /** "W", "D" or "F" for a marked set, otherwise the set's number: "1", "2"... */
+  label: string;
+  /** Null for a normal set, which carries a number instead. */
+  marker: SetMarker | null;
+  /**
+   * What the set recorded, in reading order: weight x reps, distance, duration,
+   * custom metric, RPE. Only the values it has; empty when it recorded nothing.
+   */
+  measurements: string[];
+};
+
+/** A number worth showing: not null, and not the NaN or Infinity a bad row could carry. */
+function present(value: number | null): value is number {
+  return value !== null && Number.isFinite(value);
+}
+
+/** "40 m" under a kilometre, "1.25 km" from a kilometre up. Hevy stores metres. */
+function formatDistance(meters: number): string {
+  return meters < 1_000
+    ? `${decimalNumber.format(meters)} m`
+    : `${decimalNumber.format(meters / 1_000)} km`;
+}
+
+/** "45 s", "2 min 5 s", "1 h 5 min": the non-zero parts, unit always shown. Hevy stores seconds. */
+function formatSetDuration(seconds: number): string {
+  const total = Math.round(seconds);
+  const hours = Math.floor(total / 3_600);
+  const minutes = Math.floor((total % 3_600) / 60);
+  const secs = total % 60;
+  const parts = [
+    hours > 0 ? `${hours} h` : null,
+    minutes > 0 ? `${minutes} min` : null,
+    secs > 0 ? `${secs} s` : null,
+  ].filter((part) => part !== null);
+  return parts.length > 0 ? parts.join(" ") : "0 s";
+}
+
+/** Weight x reps as Hevy shows them: "62.5 kg x 8", or whichever half was recorded. */
+function formatWeightReps(weightKg: number | null, reps: number | null): string | null {
+  if (present(weightKg) && present(reps)) return `${formatKg(weightKg)} x ${reps}`;
+  if (present(weightKg)) return formatKg(weightKg);
+  if (present(reps)) return `${reps} ${reps === 1 ? "rep" : "reps"}`;
+  return null;
+}
+
+function setMeasurements(set: FitnessSet): string[] {
+  return [
+    formatWeightReps(set.weightKg, set.reps),
+    present(set.distanceMeters) ? formatDistance(set.distanceMeters) : null,
+    present(set.durationSeconds) ? formatSetDuration(set.durationSeconds) : null,
+    // Hevy only uses this for floors or steps on stair machines, so it has no
+    // unit worth guessing at: the bare number is what the owner logged.
+    present(set.customMetric) ? decimalNumber.format(set.customMetric) : null,
+    present(set.rpe) ? `RPE ${decimalNumber.format(set.rpe)}` : null,
+  ].filter((value) => value !== null);
+}
+
+/**
+ * An exercise's sets as rows, in the order they were done.
+ *
+ * Only normal sets are numbered. Warmup, dropset and failure sets show their
+ * marker instead and do not take a number, so a warmup followed by two working
+ * sets reads W, 1, 2. A set type this code does not know is numbered as a
+ * normal set rather than hidden: the database limits the column to the four
+ * Hevy types, so that is only a guard against Hevy adding a fifth.
+ */
+export function workoutSets(sets: readonly FitnessSet[]): WorkoutSetRow[] {
+  let nextNumber = 1;
+  return [...sets]
+    .sort((a, b) => a.position - b.position)
+    .map((set) => {
+      const marker = SET_MARKERS.get(set.type) ?? null;
+      return {
+        id: set.id,
+        label: marker ?? String(nextNumber++),
+        marker,
+        measurements: setMeasurements(set),
+      };
+    });
+}
+
 export type WorkoutExercise = {
   id: string;
   title: string;
   /** Null when absent or blank, so the page has one thing to check. */
   notes: string | null;
+  sets: WorkoutSetRow[];
 };
 
 /**
  * The exercises as the page lists them: in the order they were done, with the
- * untitled fallback applied. The server function already returns them ordered;
- * sorting here as well keeps the page right if that ever changes. Sets are not
- * shown yet (#82).
+ * untitled fallback applied and each one's sets labelled. The server function
+ * already returns them ordered; sorting here as well keeps the page right if
+ * that ever changes.
  */
 export function workoutExercises(exercises: readonly FitnessExercise[]): WorkoutExercise[] {
   return [...exercises]
@@ -82,6 +180,7 @@ export function workoutExercises(exercises: readonly FitnessExercise[]): Workout
       id: exercise.id,
       title: exercise.title?.trim() || UNTITLED_EXERCISE,
       notes: exercise.notes?.trim() || null,
+      sets: workoutSets(exercise.sets),
     }));
 }
 
