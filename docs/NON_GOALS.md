@@ -63,3 +63,20 @@ raised again as oversights. Outstanding work lives in GitHub issues.
 - **Building on `src/integrations/supabase/`.** Those files are Lovable-generated and
   implement a superseded `localStorage`/Bearer approach. They cannot be deleted (Lovable
   regenerates them) and must not be extended. Use `src/lib/auth/`.
+
+- **The GitHub App "Connect GitHub" flow.** Decided on 2026-10-10 (#20). GitHub is read
+  with one fine-grained personal access token per account, held in Railway, instead of an
+  installation flow. An App only reaches accounts and orgs where it is installed and
+  needs refresh-token rotation; for one owner with two accounts that is more machinery
+  than the job needs. [GITHUB.md](integrations/GITHUB.md) is superseded for reading data.
+  Reopen only if the app ever becomes multi-user or a "Connect" button is wanted.
+- **All branches, for GitHub activity.** Decided on 2026-10-10 (#20). Default branch
+  only, which matches the numbers GitHub shows and keeps the worker cheap.
+- **Repo names, commit headlines, or even a repo count for the second GitHub account.**
+  Decided on 2026-10-10 (#20). That account is counts-only (`detail = 'counts_only'`):
+  its queries never select names or messages, a contract test enforces it, and nothing
+  but per-type daily counts is stored. Do not add specifics "for completeness".
+- **PR, review and issue titles in the first GitHub version.** Decided on 2026-10-10
+  (#20). Only the commit list (first account) is itemised; everything else is a count.
+- **Bucketing GitHub activity by the commit's own offset when travelling.** Decided on
+  2026-10-10 (#20). Always `Europe/London`, like the rest of the app.

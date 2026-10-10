@@ -25,13 +25,17 @@ GitHub issues** — that is where to look when deciding what to do next.
 
 ## Parked
 
-- GitHub integration milestone 1 — "Connect GitHub". The spec is
-  [docs/integrations/GITHUB.md](integrations/GITHUB.md) — design only, no code or
-  migrations yet.
+- Nothing currently parked. The GitHub "Connect GitHub" milestone was superseded on
+  2026-10-10; see below.
+
+## Next
+
+- GitHub activity (two accounts): decided and split into issues under #20. Design in
+  [integrations/GITHUB_MULTI_ACCOUNT.md](integrations/GITHUB_MULTI_ACCOUNT.md);
+  [integrations/GITHUB.md](integrations/GITHUB.md) is superseded.
 
 ## Later (unordered, one per data domain in [PRODUCT.md](PRODUCT.md))
 
-- GitHub activity (two accounts)
 - Computer activity tracking
 - Manually recorded iPhone Screen Time
 - Mood / energy / focus / stress / meaning tracking

@@ -53,6 +53,23 @@ _Avoid_: Net calories, surplus/deficit (as the term itself)
 **MFP link date**:
 2026-09-28, the first day MyFitnessPal passed food to Garmin. Before it, no day has **Calories eaten**, and that is expected rather than a gap in logging.
 
+### GitHub
+
+**GitHub account**:
+One GitHub user the app reads activity for. The owner has two, kept apart everywhere they appear. Each has an owner-chosen label and a **detail level**.
+_Avoid_: Connection, installation (the superseded GitHub App wording)
+
+**Contribution**:
+One piece of GitHub activity on a **Local day**, of one of four types: commit, pull request opened, pull request review, issue opened. Totals are always called "contributions", never "commits".
+_Avoid_: Commit (for a total), event, push
+
+**Unsplit contribution**:
+A contribution the account's token cannot see into, such as one in a repository it has no access to. Counted but not typed. For a full-detail account a non-zero count means the token is missing repositories.
+
+**Detail level**:
+Per **GitHub account**, `full` or `counts_only`. A `counts_only` account stores nothing but per-type daily counts: no repository names, headlines or repository counts.
+_Avoid_: Privacy mode, visibility
+
 ### Time
 
 **Local day**:
