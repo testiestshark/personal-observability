@@ -17,6 +17,11 @@ GitHub issues** — that is where to look when deciding what to do next.
   hourly Windows scheduling, and successful end-to-end hosted sync.
 - Garmin Railway production: hourly cron worker, persistent Garmin-session volume,
   fresh per-run app authentication, secure token upload helper, and operating runbook.
+- Hevy strength workouts, operational on Railway since 2026-10-06: workouts with their
+  exercises and sets, deletions, full-history backfill, an hourly cron worker, and a
+  "Last synced" time on the Integrations page. Design in
+  [integrations/HEVY.md](integrations/HEVY.md), runbook in
+  [integrations/RAILWAY_HEVY.md](integrations/RAILWAY_HEVY.md).
 
 ## Parked
 
@@ -27,7 +32,6 @@ GitHub issues** — that is where to look when deciding what to do next.
 ## Later (unordered, one per data domain in [PRODUCT.md](PRODUCT.md))
 
 - GitHub activity (two accounts)
-- Direct Hevy strength-workout integration
 - Computer activity tracking
 - Manually recorded iPhone Screen Time
 - Mood / energy / focus / stress / meaning tracking
