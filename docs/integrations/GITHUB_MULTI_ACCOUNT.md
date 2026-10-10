@@ -62,8 +62,13 @@ Consequences that change the research above:
   cross-cutting follow-up (#79), not part of this work.
 
 **The probe** is `scripts/github/github_probe.py`, driven by the guided wizard
-`bash scripts/github/token-wizard.sh`, which creates two throwaway read-only tokens,
-runs it, and helps revoke them. Its report is counts, booleans and timestamps only.
+`bash scripts/github/token-wizard.sh`. The first run used two throwaway fine-grained
+tokens; the wizard now covers account B only, with a throwaway **classic** token that
+carries `read:user` and nothing else, because GitHub documents that private-repo
+contributions are only split by type for tokens with that scope (fine-grained tokens
+have no equivalent). It runs the probe with `--audit-exposure`, which also reports
+whether that token can read any repository, organisation, PR or issue _name_, as yes/no
+and counts, never the names. Its report is counts, booleans and timestamps only.
 
 **Still unverified until the probe (#74) runs:** whether sub-day `from`/`to` windows are
 honoured for commit contributions (if not, B's commit count uses GitHub's own day

@@ -180,29 +180,33 @@ finish() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────
-# STAGES: author this section. One stage() per step the human takes.
-# Replace the example below. Set TOTAL_STAGES to match the stages you write.
+# STAGES
 # ──────────────────────────────────────────────────────────────────────────
 
-# GitHub probe tokens for #20 / #74.
+# GitHub probe token for account B (#20 / #74).
 #
-# Creates two THROWAWAY fine-grained, read-only tokens (one per GitHub account),
-# runs scripts/github/github_probe.py with them, then helps you revoke them. The
-# production tokens are made later, for #77, with the same permission choices but a
-# 90-day expiry, and are pasted straight into Railway, never through this wizard.
+# Account A is settled: fine-grained, read-only, and its probe results are in
+# docs/integrations/GITHUB_MULTI_ACCOUNT.md. This wizard is for B only.
 #
-# Nothing here is a CI secret, so no set_secret call: the tokens live only in the
-# gitignored .env.local and are blanked again in the last stage.
+# B's private work comes back from GitHub as one anonymous lump unless the token is a
+# CLASSIC token carrying the read:user scope (fine-grained tokens have no equivalent).
+# So this makes one THROWAWAY classic token with read:user and nothing else, runs
+# scripts/github/github_probe.py with --audit-exposure to learn what that token can and
+# cannot read (including whether any name is readable), then helps you delete it.
+#
+# Nothing here is a CI secret, so no set_secret call: the token lives only in the
+# gitignored .env.local and is blanked again in the last stage.
 
-TOTAL_STAGES=5
+TOTAL_STAGES=4
 
-# Work from the repo root (this file lives in scripts/github/), and keep the tokens
+# Work from the repo root (this file lives in scripts/github/), and keep the token
 # in .env.local, which is gitignored, rather than the template's default .env.
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 [[ "$ENV_FILE" == ".env" ]] && ENV_FILE=".env.local"
 
-NEW_TOKEN_URL="https://github.com/settings/personal-access-tokens/new"
-TOKEN_LIST_URL="https://github.com/settings/personal-access-tokens"
+# GitHub prefills a classic token's name, scopes and expiry from these query parameters.
+NEW_TOKEN_URL="https://github.com/settings/tokens/new?scopes=read:user&description=po-probe-B&default_expires_at=7"
+TOKEN_LIST_URL="https://github.com/settings/tokens"
 PROBE_REPORT="${TMPDIR:-/tmp}/github-probe-report.txt"
 
 # find_python prints the first interpreter that is really Python 3.9+. The Windows
@@ -219,28 +223,30 @@ find_python() {
   return 1
 }
 
-# require_fine_grained NAME VALUE refuses anything that is not a fine-grained token.
-# Classic tokens (ghp_...) are ruled out by #20 because they cannot be read-only.
-require_fine_grained() {
+# require_classic NAME VALUE refuses anything that is not a classic token (ghp_...).
+# A fine-grained token cannot carry read:user, so it would just reproduce the lump.
+require_classic() {
   local name="$1" value="$2"
   if [[ -z "$value" ]]; then
     warn "Nothing was entered for $name. Re-run the wizard."
     exit 1
   fi
   case "$value" in
-    github_pat_*) ;;
-    ghp_* | gho_* | ghu_* | ghs_*)
-      warn "$name is a classic or OAuth token. #20 rules those out. Make a fine-grained one."
+    ghp_*) ;;
+    github_pat_*)
+      warn "$name is a fine-grained token. It cannot carry read:user, which is the whole point."
+      warn "Use the classic page: $TOKEN_LIST_URL → Generate new token (classic)."
       exit 1
       ;;
     *)
-      warn "$name does not look like a fine-grained token (they start with github_pat_)."
+      warn "$name does not look like a classic token (they start with ghp_)."
       exit 1
       ;;
   esac
 }
 
-# run_probe runs the probe and keeps a copy of its (counts-only) report.
+# run_probe runs the probe with the exposure audit and keeps a copy of its report.
+# The report holds counts, booleans and timestamps only.
 run_probe() {
   local python
   if ! python=$(find_python); then
@@ -248,101 +254,72 @@ run_probe() {
     exit 1
   fi
   if ! "$python" scripts/github/github_probe.py --env-file "$ENV_FILE" \
-    --b-private-setting "$B_PRIVATE_SETTING" | tee "$PROBE_REPORT"; then
-    warn "The probe reported a problem (see above). The tokens are still saved."
+    --b-private-setting "$B_PRIVATE_SETTING" --audit-exposure | tee "$PROBE_REPORT"; then
+    warn "The probe reported a problem (see above). The token is still saved."
   fi
 }
 
-banner "GitHub probe tokens (#20 / #74)"
+banner "GitHub probe token for account B (#20 / #74)"
 
-# ── 1. Two-factor and identities ──────────────────────────────────────────
-stage "Before any token exists: two-factor and who is who"
+# ── 1. Two-factor and identity ────────────────────────────────────────────
+stage "Before the token exists: two-factor and who is who"
 say "A token is only as safe as the account behind it, so check this first."
 open_url "https://github.com/settings/security"
-step "Signed in as account A: two-factor authentication should say Enabled."
-confirm "Is two-factor on for account A?" || SKIPPED+=("Turn on two-factor for GitHub account A")
-step "Now account B (a private window helps): same page, same check."
+step "Signed in as account B (a private window helps): two-factor should say Enabled."
 confirm "Is two-factor on for account B?" || SKIPPED+=("Turn on two-factor for GitHub account B")
-step "Railway: your account settings, security section. Not needed for the probe, but #77 needs it."
-confirm "Is two-factor on for Railway?" || SKIPPED+=("Turn on two-factor for Railway before #77")
 printf '\n'
 say "The probe refuses a token that belongs to a different account than you expect."
-ask GITHUB_LOGIN_A "Account A's GitHub username:"
 ask GITHUB_LOGIN_B "Account B's GitHub username:"
-write_env GITHUB_LOGIN_A "$GITHUB_LOGIN_A"
 write_env GITHUB_LOGIN_B "$GITHUB_LOGIN_B"
-printf '\n'
-say "Account B's profile has a Contributions settings dropdown above the graph, with a"
-say "'Private contributions' tick-box. Check it now; the report records it (check 4)."
-ask B_PRIVATE_SETTING "Is B's 'Private contributions' ticked? (on / off / unknown):"
-case "$B_PRIVATE_SETTING" in on | off | unknown) ;; *) B_PRIVATE_SETTING="unknown" ;; esac
+# The first probe run showed an unsplit count above zero, which GitHub only reports
+# when B's 'Private contributions' profile setting is on.
+B_PRIVATE_SETTING="on"
+# Account A is not part of this run. Make sure a leftover token cannot be picked up.
+write_env GITHUB_TOKEN_A ""
 
-# ── 2. Account A token ────────────────────────────────────────────────────
-stage "Account A: create a throwaway read-only token"
-say "Sign in to GitHub as account A first (check the avatar menu shows its username)."
+# ── 2. Account B classic token ────────────────────────────────────────────
+stage "Account B: create a throwaway classic token with read:user only"
+say "Stay signed in as account B (check the avatar menu shows its username)."
+say "This is a CLASSIC token, deliberately. read:user is the one scope that lets GitHub"
+say "split private work by type, and fine-grained tokens cannot carry it."
 open_url "$NEW_TOKEN_URL"
-step "Token name: po-probe-A"
-step "Expiration: Custom, about a week from today (this token is throwaway)."
-step "Resource owner: account A itself, not an organisation."
-step "Repository access: Only select repositories, then pick the repos A owns that you commit to."
-note "     (the probe's 'unsplit' line tells us if you missed one)"
-step "Permissions: leave EVERY permission at No access. Metadata: Read-only is added"
-say "      automatically and cannot be removed. Add nothing under Account permissions."
+step "Note: po-probe-B  (the page should arrive pre-filled)"
+step "Expiration: 7 days (this token is throwaway)."
+step "Scopes: tick read:user and NOTHING else. Under 'user' it is the first box."
+warn "Do not tick 'repo', 'user' itself, 'user:email' or anything else."
+say "      The probe reads the token's scopes back and flags anything extra."
 step "Click Generate token, then copy it. GitHub shows it exactly once."
-ask_secret GITHUB_TOKEN_A "Paste account A's token (hidden):"
-require_fine_grained GITHUB_TOKEN_A "$GITHUB_TOKEN_A"
-write_env GITHUB_TOKEN_A "$GITHUB_TOKEN_A"
-
-# ── 3. Account B token ────────────────────────────────────────────────────
-stage "Account B: create a throwaway read-only token"
-say "Switch to account B: sign out, or open a private window signed in as B."
-say "Check the avatar menu shows B's username before you continue."
-open_url "$NEW_TOKEN_URL"
-step "Token name: po-probe-B"
-step "Expiration: Custom, about a week from today."
-step "Resource owner: account B itself, not an organisation."
-step "Repository access: Only select repositories, then pick B's two repos and nothing else."
-step "Permissions: leave EVERY permission at No access (Metadata: Read-only is automatic)."
-step "Click Generate token, then copy it."
-warn "This wizard never asks for, or prints, a repository name. Only the token."
 ask_secret GITHUB_TOKEN_B "Paste account B's token (hidden):"
-require_fine_grained GITHUB_TOKEN_B "$GITHUB_TOKEN_B"
+require_classic GITHUB_TOKEN_B "$GITHUB_TOKEN_B"
 write_env GITHUB_TOKEN_B "$GITHUB_TOKEN_B"
 
-# ── 4. Probe ──────────────────────────────────────────────────────────────
-stage "Run the probe"
-say "It reads totals and timestamps only. It never selects a repo name, message or URL,"
-say "and account B's token is never asked about repositories at all."
+# ── 3. Probe ──────────────────────────────────────────────────────────────
+stage "Run the probe and the exposure audit"
+say "It reads totals, the token's scopes, and asks what names the token can read."
+say "Names themselves are never printed or saved: only yes/no and counts."
 printf '\n'
 run_probe
 printf '\n'
-while confirm "Run it again (for example after changing B's Private contributions setting)?"; do
-  ask B_PRIVATE_SETTING "Is B's 'Private contributions' ticked now? (on / off / unknown):"
-  case "$B_PRIVATE_SETTING" in on | off | unknown) ;; *) B_PRIVATE_SETTING="unknown" ;; esac
+while confirm "Run it again?"; do
   printf '\n'
   run_probe
   printf '\n'
 done
 
-# ── 5. Hand back and revoke ───────────────────────────────────────────────
-stage "Hand the report back, then revoke the tokens"
+# ── 4. Hand back and revoke ───────────────────────────────────────────────
+stage "Hand the report back, then delete the token"
 say "The report is saved at: $PROBE_REPORT"
 say "It holds counts, booleans and timestamps only, so it is safe to paste to Claude."
 say "Paste it into the session so the findings go into the note and #74 can be ticked."
 printf '\n'
-warn "If the report says Metadata-only is NOT enough (typed totals all zero, or unsplit"
-warn "above zero for B), do not revoke yet: re-run this wizard with Contents: Read-only added."
-printf '\n'
-if confirm "Report handed back and findings recorded? Revoke the throwaway tokens now?"; then
+if confirm "Report handed back? Delete the throwaway token now?"; then
   open_url "$TOKEN_LIST_URL"
-  step "As account A: open po-probe-A and click Delete (or Revoke)."
-  step "As account B (private window): open po-probe-B and click Delete (or Revoke)."
-  pause "Press Enter once both are deleted."
-  write_env GITHUB_TOKEN_A ""
+  step "As account B: find po-probe-B and click Delete."
+  pause "Press Enter once it is deleted."
   write_env GITHUB_TOKEN_B ""
 else
-  SKIPPED+=("Revoke po-probe-A and po-probe-B at $TOKEN_LIST_URL once the findings are recorded")
-  SKIPPED+=("Blank GITHUB_TOKEN_A and GITHUB_TOKEN_B in $ENV_FILE when you do")
+  SKIPPED+=("Delete po-probe-B at $TOKEN_LIST_URL once the findings are recorded")
+  SKIPPED+=("Blank GITHUB_TOKEN_B in $ENV_FILE when you do")
 fi
 # ──────────────────────────────────────────────────────────────────────────
 

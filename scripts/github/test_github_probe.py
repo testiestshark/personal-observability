@@ -7,14 +7,19 @@ from github_probe import (
     EXPIRY_HEADER,
     AccountSpec,
     ProbeError,
+    SCOPES_HEADER,
     classify_commit_window,
     classify_halves,
+    exposure_audit,
     inclusive_to,
     iso_z,
     load_env_file,
     london_day_of,
     london_day_window,
+    named,
+    parse_scopes,
     probe_account,
+    scope_lines,
     scrub,
     specs_from,
 )
@@ -103,12 +108,40 @@ class EnvAndScrubTests(unittest.TestCase):
         self.assertEqual(scrub("bad credentials for sekret", ["sekret"]), "bad credentials for [token]")
 
 
+class ScopeTests(unittest.TestCase):
+    def test_no_header_means_a_fine_grained_token(self):
+        self.assertIsNone(parse_scopes({}))
+        self.assertIn("fine-grained", scope_lines(None)[0])
+
+    def test_scopes_are_split_trimmed_and_sorted(self):
+        self.assertEqual(parse_scopes({SCOPES_HEADER: "repo, read:user"}), ["read:user", "repo"])
+
+    def test_empty_header_is_a_classic_token_with_no_scopes(self):
+        self.assertEqual(parse_scopes({SCOPES_HEADER: ""}), [])
+
+    def test_exactly_read_user_passes(self):
+        lines = scope_lines(["read:user"])
+        self.assertIn("exactly what B needs", lines[-1])
+
+    def test_repo_scope_is_flagged_as_code_access(self):
+        lines = scope_lines(["read:user", "repo"])
+        self.assertTrue(any("EXTRA scope(s)" in line and "repo" in line for line in lines))
+        self.assertTrue(any("change or read code" in line for line in lines))
+
+    def test_probe_reports_scopes_next_to_identity(self):
+        client = FakeClient(scopes="read:user")
+        lines, ok = probe_account(client, AccountSpec("B", "tok", "alice", "counts_only"), NOW)
+        self.assertTrue(ok)
+        self.assertIn("token type: classic; scopes: read:user", lines)
+
+
 class FakeClient:
     """Stands in for GitHub. Records every query so tests can assert on what was asked."""
 
-    def __init__(self, login="alice", commits_by_window=None, expiry="2026-11-01 12:00:00 UTC"):
+    def __init__(self, login="alice", commits_by_window=None, expiry="2026-11-01 12:00:00 UTC", scopes=None):
         self.login = login
         self.expiry = expiry
+        self.scopes = scopes
         self.queries: list[str] = []
         self.commits_by_window = commits_by_window or (lambda start, end: 0)
 
@@ -116,6 +149,8 @@ class FakeClient:
         self.queries.append(query)
         if "viewer { id login" in query:
             headers = {EXPIRY_HEADER: self.expiry} if self.expiry else {}
+            if self.scopes is not None:
+                headers[SCOPES_HEADER] = self.scopes
             return {"viewer": {"id": "U_1", "login": self.login, "databaseId": 1}}, headers
         if "contributionsCollection" in query:
             start = datetime.fromisoformat(variables["from"].replace("Z", "+00:00"))
@@ -206,6 +241,91 @@ class ProbeAccountTests(unittest.TestCase):
         lines, ok = probe_account(Boom(), self.spec(), NOW)
         self.assertFalse(ok)
         self.assertEqual(lines[-1], "FAILED: GitHub answered HTTP 401")
+
+
+SECRET_NAMES = ["acme-secret-repo", "Secret PR title", "Secret issue title", "secret-org"]
+
+
+class AuditClient:
+    """A GitHub whose answers carry real-looking names, so tests can prove none leak out."""
+
+    def __init__(self, names_visible=True, failing=()):
+        self.names_visible = names_visible
+        self.failing = set(failing)
+
+    def _name(self, value):
+        return value if self.names_visible else None
+
+    def query(self, query, variables=None):
+        for marker in self.failing:
+            if marker in query:
+                raise ProbeError("GraphQL error type(s): FORBIDDEN")
+        if "commitContributionsByRepository" in query:
+            repo = {"isPrivate": True, "nameWithOwner": self._name("alice/acme-secret-repo")}
+            body = {"commitContributionsByRepository": [{"repository": repo, "contributions": {"totalCount": 9}}]}
+            return {"viewer": {"contributionsCollection": body}}, {}
+        if "pullRequestContributions" in query:
+            node = {"pullRequest": {"title": self._name("Secret PR title"), "repository": {"isPrivate": True}}}
+            return {"viewer": {"contributionsCollection": {"pullRequestContributions": {"nodes": [node]}}}}, {}
+        if "issueContributions" in query:
+            node = {"issue": {"title": self._name("Secret issue title"), "repository": {"isPrivate": False}}}
+            return {"viewer": {"contributionsCollection": {"issueContributions": {"nodes": [node]}}}}, {}
+        if "privacy: PRIVATE" in query:
+            nodes = [{"nameWithOwner": self._name("alice/acme-secret-repo")}]
+            return {"viewer": {"repositories": {"totalCount": 3, "nodes": nodes}}}, {}
+        if "organizations" in query:
+            nodes = [{"login": self._name("secret-org")}]
+            return {"viewer": {"organizations": {"totalCount": 1, "nodes": nodes}}}, {}
+        raise AssertionError(f"unexpected query: {query}")
+
+    def rest_get(self, path):
+        if path == "/user":
+            return 200, {"login": "alice", "total_private_repos": 3}
+        if path.startswith("/user/repos"):
+            return 200, [{"full_name": self._name("alice/acme-secret-repo")}] if self.names_visible else []
+        if path == "/user/emails":
+            return 404, None
+        raise AssertionError(f"unexpected path: {path}")
+
+
+class ExposureAuditTests(unittest.TestCase):
+    def test_names_are_counted_but_never_printed(self):
+        lines, places = exposure_audit(AuditClient(names_visible=True), NOW)
+        report = "\n".join(lines)
+        for secret in SECRET_NAMES + ["acme", "alice/"]:
+            self.assertNotIn(secret, report)
+        self.assertGreater(places, 0)
+        self.assertIn("RESULT: names ARE readable", report)
+        self.assertIn("repo name readable on 1", report)
+
+    def test_unreadable_names_give_a_clean_result(self):
+        lines, places = exposure_audit(AuditClient(names_visible=False), NOW)
+        self.assertEqual(places, 0)
+        self.assertTrue(lines[-1].startswith("RESULT: no repository, organisation, PR or issue name"))
+
+    def test_private_work_is_counted_without_naming_it(self):
+        lines, _ = exposure_audit(AuditClient(names_visible=False), NOW)
+        report = "\n".join(lines)
+        self.assertIn("1 repos listed, 1 private, repo name readable on 0", report)
+        self.assertIn("1 in private repos, title readable on 0", report)
+
+    def test_one_failing_check_does_not_hide_the_others(self):
+        lines, _ = exposure_audit(AuditClient(failing=["organizations"]), NOW)
+        report = "\n".join(lines)
+        self.assertIn("organisations: not available (GraphQL error type(s): FORBIDDEN)", report)
+        self.assertIn("commit breakdown by repository:", report)
+        self.assertIn("REST /user/emails: HTTP 404", report)
+
+    def test_rest_profile_reports_presence_of_private_fields_not_their_values(self):
+        lines, _ = exposure_audit(AuditClient(), NOW)
+        report = "\n".join(lines)
+        self.assertIn("private profile fields present: yes", report)
+
+    def test_named_only_accepts_real_strings(self):
+        self.assertTrue(named("x"))
+        self.assertFalse(named(None))
+        self.assertFalse(named("   "))
+        self.assertFalse(named(5))
 
 
 if __name__ == "__main__":
