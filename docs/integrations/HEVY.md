@@ -1,6 +1,6 @@
 # Direct Hevy strength-workout integration
 
-**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises and sets stored (#37), local only / Backfill built (#39), local only / Railway deployment prepared, runbook in [RAILWAY_HEVY.md](RAILWAY_HEVY.md), awaiting owner go-live (#41)**
+**Status: Designed (2026-09-29) / Sync tracer built (2026-09-30), local only / Deletions built (#38), local only / Exercises and sets stored (#37), local only / Backfill built (#39), local only / Operational on Railway production since 2026-10-06, runbook in [RAILWAY_HEVY.md](RAILWAY_HEVY.md) (#41)**
 
 Hevy is the source of truth for detailed strength training. Personal
 Observability will use Hevy's documented public API directly; no intermediary
