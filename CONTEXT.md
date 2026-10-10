@@ -63,11 +63,15 @@ One GitHub user the app reads activity for. The owner has two, kept apart everyw
 _Avoid_: Connection, installation (the superseded GitHub App wording)
 
 **Contribution**:
-One piece of GitHub activity on a **Local day**, of one of four types: commit, pull request opened, pull request review, issue opened. Totals are always called "contributions", never "commits".
+One piece of GitHub activity on a **GitHub day**, of one of four types: commit, pull request opened, pull request review, issue opened. Totals are always called "contributions", never "commits".
 _Avoid_: Commit (for a total), event, push
 
 **Unsplit contribution**:
-A contribution the account's token cannot see into, such as one in a repository it has no access to. Counted but not typed. For a full-detail account a non-zero count means the token is missing repositories.
+A contribution the account's token cannot see into, so it is counted but not typed. For a full-detail account a non-zero count means the token is missing repositories. For the counts-only account it means the token has lost its `read:user` scope, because only that scope lets GitHub split private work by type.
+
+**GitHub day**:
+The UTC calendar date GitHub buckets contributions by. GitHub does not honour sub-day windows, so counts cannot be re-bucketed into a **Local day**; a late-evening BST contribution can sit on the next GitHub day.
+_Avoid_: Local day (for GitHub counts), London day
 
 **Detail level**:
 Per **GitHub account**, `full` or `counts_only`. A `counts_only` account stores nothing but per-type daily counts: no repository names, headlines or repository counts.
