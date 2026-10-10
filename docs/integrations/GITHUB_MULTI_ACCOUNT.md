@@ -339,7 +339,7 @@ create table public.github_accounts (
   github_user_id bigint not null,      -- User.databaseId
   github_node_id text not null,        -- User.id, used for history(author: {id})
   login text not null,
-  label text not null,                 -- owner-chosen, e.g. 'Personal', 'Work'
+  label text not null,                 -- owner-chosen, e.g. 'Account A'
   display_order smallint not null default 0,
   created_at timestamptz not null default now(),
   unique (user_id, github_user_id)
@@ -400,14 +400,14 @@ Integrations (`src/routes/integrations.tsx`).
 - **Today → "Making" card** (same card style as the Garmin sections):
   - Headline: **combined distinct commits today**, e.g. "7 commits".
   - Directly under it, a **two-segment bar** — account A in one colour, account B in
-    another — with the per-account number and label beside each segment ("Personal 5 ·
-    Work 2"). A shared commit is counted once in the headline and shown under each
+    another — with the per-account number and label beside each segment ("Account A 5 ·
+    Account B 2"). A shared commit is counted once in the headline and shown under each
     account.
   - Then **two columns (stacked on mobile), one per account**, each headed by its
     label, login and colour dot. Each lists that day's commits: local time,
     `owner/repo`, message headline. Private repos get a lock icon, and the list can
     collapse to "N commits in M repos".
-  - Empty state for each account separately ("No commits on Work today"), so
+  - Empty state for each account separately ("No commits on Account B today"), so
     "quiet" and "not synced" are never confused. Show each account's last sync time in
     the same chip as Garmin's.
 - **History (Timeline/Insights):** a 7- or 30-day **stacked bar** with one series per
