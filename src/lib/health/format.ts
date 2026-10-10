@@ -46,14 +46,21 @@ export function formatActivityTime(value: string): string {
   return londonTime.format(new Date(value));
 }
 
+/** Under this distance an activity's distance and pace are noise, so neither is shown. */
+export const MIN_SHOWN_DISTANCE_METERS = 100;
+
+/** Kilometres, up to two decimals: "5 km", "5.02 km". "—" when unknown. */
+export function formatKilometres(meters: number | null | undefined): string {
+  if (meters === null || meters === undefined || !Number.isFinite(meters)) return "—";
+  return `${(meters / 1000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} km`;
+}
+
 export function formatActivitySummary(activity: FitnessActivity): string {
   const parts: string[] = [];
   if (activity.durationSeconds !== null)
     parts.push(`${Math.round(activity.durationSeconds / 60)} min`);
-  if (activity.distanceMeters !== null && activity.distanceMeters >= 100) {
-    parts.push(
-      `${(activity.distanceMeters / 1000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} km`,
-    );
+  if (activity.distanceMeters !== null && activity.distanceMeters >= MIN_SHOWN_DISTANCE_METERS) {
+    parts.push(formatKilometres(activity.distanceMeters));
   }
   if (activity.caloriesKcal !== null) parts.push(`${activity.caloriesKcal} kcal`);
   if (activity.averageHeartRateBpm !== null) parts.push(`${activity.averageHeartRateBpm} bpm avg`);

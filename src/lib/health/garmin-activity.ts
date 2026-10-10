@@ -1,10 +1,13 @@
-import { formatActivityTime, formatActivityType, formatHeartRate } from "./format";
+import {
+  formatActivityTime,
+  formatActivityType,
+  formatHeartRate,
+  formatKilometres,
+  MIN_SHOWN_DISTANCE_METERS,
+} from "./format";
 import type { GarminActivityDetail } from "./health.functions";
 import { formatWorkoutDuration } from "./workout";
 import { formatDayLabel } from "@/lib/weight/units";
-
-/** Under this distance a pace or speed is noise, as on the day view's card. */
-const MIN_PACE_DISTANCE_METERS = 100;
 
 const MISSING = "—";
 
@@ -19,13 +22,13 @@ export function isFootActivity(type: string): boolean {
 }
 
 /** Distance and duration that can give a pace or speed, or null when they cannot. */
-function paceInputs(
+function rateInputs(
   durationSeconds: number | null,
   distanceMeters: number | null,
 ): { durationSeconds: number; distanceMeters: number } | null {
   if (durationSeconds === null || distanceMeters === null) return null;
   if (!Number.isFinite(durationSeconds) || !Number.isFinite(distanceMeters)) return null;
-  if (durationSeconds <= 0 || distanceMeters < MIN_PACE_DISTANCE_METERS) return null;
+  if (durationSeconds <= 0 || distanceMeters < MIN_SHOWN_DISTANCE_METERS) return null;
   return { durationSeconds, distanceMeters };
 }
 
@@ -34,7 +37,7 @@ export function formatAveragePace(
   durationSeconds: number | null,
   distanceMeters: number | null,
 ): string {
-  const inputs = paceInputs(durationSeconds, distanceMeters);
+  const inputs = rateInputs(durationSeconds, distanceMeters);
   if (!inputs) return MISSING;
   // Round once, to whole seconds per km, then split: rounding minutes and
   // seconds separately would show 5:60.
@@ -49,16 +52,10 @@ export function formatAverageSpeed(
   durationSeconds: number | null,
   distanceMeters: number | null,
 ): string {
-  const inputs = paceInputs(durationSeconds, distanceMeters);
+  const inputs = rateInputs(durationSeconds, distanceMeters);
   if (!inputs) return MISSING;
   const kmPerHour = inputs.distanceMeters / 1_000 / (inputs.durationSeconds / 3_600);
   return `${kmPerHour.toFixed(1)} km/h`;
-}
-
-/** Kilometres, up to two decimals, as the day view's card shows them. */
-function formatDistanceKm(meters: number | null): string {
-  if (meters === null || !Number.isFinite(meters)) return MISSING;
-  return `${(meters / 1_000).toLocaleString("en-GB", { maximumFractionDigits: 2 })} km`;
 }
 
 export type GarminHeadlineTile = { label: string; value: string };
@@ -81,16 +78,16 @@ export type GarminActivityHeader = {
  * shape; a missing value reads "—" and is never shown as 0.
  */
 export function garminActivityHeader(activity: GarminActivityDetail): GarminActivityHeader {
-  const foot = isFootActivity(activity.type);
+  const isFoot = isFootActivity(activity.type);
   return {
     title: activity.name?.trim() || formatActivityType(activity.type),
     localDay: activity.localDay,
     dateLabel: formatDayLabel(activity.localDay),
     startTime: formatActivityTime(activity.startedAt),
     tiles: [
-      { label: "Distance", value: formatDistanceKm(activity.distanceMeters) },
+      { label: "Distance", value: formatKilometres(activity.distanceMeters) },
       { label: "Time", value: formatWorkoutDuration(activity.durationSeconds) },
-      foot
+      isFoot
         ? {
             label: "Avg pace",
             value: formatAveragePace(activity.durationSeconds, activity.distanceMeters),

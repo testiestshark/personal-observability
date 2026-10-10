@@ -76,6 +76,24 @@ function BackToDay({ day }: { day: string }) {
   );
 }
 
+function StatGrid({ label, tiles }: { label: string; tiles: { label: string; value: string }[] }) {
+  return (
+    <section
+      aria-label={label}
+      className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 md:grid-cols-4 md:p-5"
+    >
+      {tiles.map((tile) => (
+        <div key={tile.label} className="min-w-0">
+          <p className="truncate text-[11px] text-muted-foreground">{tile.label}</p>
+          <p className="mt-1 truncate font-display text-xl text-foreground md:text-2xl">
+            {tile.value}
+          </p>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function HevyWorkout({ activity }: { activity: HevyActivityDetail }) {
   const header = workoutHeader(activity);
   const blocks = groupSupersets(workoutExercises(activity.exercises));
@@ -91,19 +109,7 @@ function HevyWorkout({ activity }: { activity: HevyActivityDetail }) {
       <BackToDay day={header.localDay} />
       <PageHeader eyebrow={`${header.dateLabel} · ${header.startTime}`} title={header.title} />
 
-      <section
-        aria-label="Workout totals"
-        className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 md:grid-cols-4 md:p-5"
-      >
-        {stats.map((stat) => (
-          <div key={stat.label} className="min-w-0">
-            <p className="truncate text-[11px] text-muted-foreground">{stat.label}</p>
-            <p className="mt-1 truncate font-display text-xl text-foreground md:text-2xl">
-              {stat.value}
-            </p>
-          </div>
-        ))}
-      </section>
+      <StatGrid label="Workout totals" tiles={stats} />
 
       <section aria-labelledby="exercises-heading" className="mt-6">
         <h2 id="exercises-heading" className="mb-3 font-display text-lg text-foreground">
@@ -153,19 +159,7 @@ function GarminActivity({ activity }: { activity: GarminActivityDetail }) {
       <BackToDay day={header.localDay} />
       <PageHeader eyebrow={`${header.dateLabel} · ${header.startTime}`} title={header.title} />
 
-      <section
-        aria-label="Activity totals"
-        className="grid grid-cols-2 gap-3 rounded-2xl border border-border bg-card p-4 md:grid-cols-4 md:p-5"
-      >
-        {header.tiles.map((tile) => (
-          <div key={tile.label} className="min-w-0">
-            <p className="truncate text-[11px] text-muted-foreground">{tile.label}</p>
-            <p className="mt-1 truncate font-display text-xl text-foreground md:text-2xl">
-              {tile.value}
-            </p>
-          </div>
-        ))}
-      </section>
+      <StatGrid label="Activity totals" tiles={header.tiles} />
     </>
   );
 }
