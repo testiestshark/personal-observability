@@ -98,3 +98,11 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   carry `read:user`, so account B's private work would come back as one unsplit lump.
   Account A uses a fine-grained read-only token; B uses a classic token with `read:user`
   and nothing else, which can read no code and no repo, PR, issue or organisation name.
+- **A narrower, ingest-only login for the sync workers (#79).** Decided on 2026-10-10
+  (#102). Every worker signs in with the owner's app login, so a leak of any worker's
+  environment exposes the owner's data, not just that worker's tables. A restricted
+  credential (an ingest-only role writing through a security-definer function) was
+  considered and not built: the workers add per-day counts and the owner's own health
+  metrics, which the owner accepts the risk on, and the weak point is access to the
+  Railway project itself, which the account baseline in #94 covers. Reopen if a worker
+  ever holds anything more sensitive than counts, or if content-level data is added.
