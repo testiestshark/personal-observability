@@ -1,9 +1,12 @@
 # GitHub activity across two accounts — research
 
 Status: **decided 2026-10-10 (#20); token probe done (#74, findings below); schema
-written and verified locally (#75, migration `20261010120000_create_github_tables.sql`,
-not yet pushed to hosted).** The worker (#76), deployment (#77) and UI (#78) are not
-built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+built (#75, migration `20261010120000_create_github_tables.sql`, applied to hosted on
+2026-10-10).** On hosted: `anon` is refused with `42501` on all three tables, and a
+second account's forged insert as the owner is refused by RLS. A second account's
+read, update and delete isolation is **not yet exercised on hosted** because the
+tables hold no rows; re-run it once the worker has written some. The worker (#76),
+deployment (#77) and UI (#78) are not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
@@ -59,9 +62,12 @@ Consequences that change the research above:
   "`full` only" rule is enforced by the insert and update policies on `github_commits`
   (the parent account must have `detail = 'full'`), so a `counts_only` account cannot
   have a repo name or headline stored even if the worker is wrong. Flipping an account
-  to `counts_only` later does not delete commits already stored; the worker must.
-  `scripts/verify-github-rls.sql` is the privilege and isolation check (HEVY.md shows
-  how to run these scripts).
+  to `counts_only` later does not delete commits already stored; the worker must. A
+  check constraint also rejects a multi-line `message_headline`, so a commit body
+  cannot be stored. `scripts/verify-github-rls.sql` is the local privilege and
+  isolation check (HEVY.md shows how to run these scripts). On hosted, `authenticated`
+  holds `REFERENCES`, `TRIGGER` and `TRUNCATE` on every table by default; that is
+  tracked in #97, not specific to these tables.
 - **Tokens.** 90-day expiry; the worker records `token_expires_at` from the
   `github-authentication-token-expiration` header and the app warns 14 days ahead.
   Rotation is manual. Separate sealed Railway variables per account; logs carry counts
