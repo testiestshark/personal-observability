@@ -140,6 +140,27 @@ begin
     when insufficient_privilege then null;
   end;
 
+  -- Nor can an existing commit be moved onto one.
+  begin
+    update public.github_commits set account_id = counts_account where user_id = owner_id;
+    raise exception 'a commit was moved onto a counts_only account';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  -- A commit body (anything multi-line) is refused; only the headline is kept.
+  begin
+    insert into public.github_commits (
+      user_id, account_id, repo_node_id, repo_name_with_owner, repo_is_private,
+      oid, message_headline, authored_at, local_day
+    )
+    values (owner_id, full_account, 'R_rls', 'rls/repo', true, 'body1',
+            E'headline\n\nbody text', '1900-01-01T10:00:00Z', '1900-01-01');
+    raise exception 'a multi-line commit message was accepted';
+  exception
+    when check_violation then null;
+  end;
+
   -- The second user sees none of it.
   perform set_config(
     'request.jwt.claims',

@@ -37,6 +37,8 @@ create table public.github_daily_contributions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   account_id uuid not null references public.github_accounts (id) on delete cascade,
+  -- GitHub's UTC date bucket. Named local_day to match the other tables, but it
+  -- is not the Europe/London day those use; do not join across them naively.
   local_day date not null,
   kind text not null,
   count integer not null,
@@ -61,12 +63,17 @@ create table public.github_commits (
   oid text not null,
   message_headline text not null,
   authored_at timestamptz not null,
+  -- Commit.author.date as GitHub gave it, original UTC offset kept.
   author_date_raw text,
+  -- GitHub's UTC date bucket, as in github_daily_contributions.
   local_day date not null,
   synced_at timestamptz not null default now(),
 
   constraint github_commits_account_repo_oid_unique
-    unique (user_id, account_id, repo_node_id, oid)
+    unique (user_id, account_id, repo_node_id, oid),
+  -- Headline only: a body always contains a newline.
+  constraint github_commits_headline_single_line
+    check (position(E'\n' in message_headline) = 0)
 );
 
 create index github_commits_user_day_idx
