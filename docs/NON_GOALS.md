@@ -37,6 +37,14 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   does not show it. Per-exercise notes are different: they are stored and shown.
   Reopen only if the owner starts writing workout notes.
 
+- **A route map, or any stored route coordinates, for Garmin activities.** Decided on
+  2026-10-10 (#72). The Garmin worker deliberately omits GPS data
+  ([GARMIN.md](integrations/GARMIN.md)), and a hosted copy of run routes would hold the
+  owner's home address. The activity detail page shows the stored summary metrics, and
+  splits (#95) are time, pace and heart rate per km or lap with no positions. Do not add
+  start or end coordinates to laps "for completeness". Reopen only if the owner decides
+  a map is worth keeping location data for.
+
 - **A tunnel for opening the local app away from home Wi-Fi.** Decided on 2026-10-06
   (#58). `bun run local` serves the phone over the same Wi-Fi only. A tunnel would put
   a build with a one-tap sign-in and a copy of real data on a public address.
