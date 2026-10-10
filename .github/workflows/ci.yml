@@ -82,7 +82,7 @@ jobs:
       # install is conditional rather than a failure.
       - name: Python worker tests
         run: |
-          for worker in garmin hevy; do
+          for worker in garmin hevy github; do
             echo "::group::$worker"
             cd "scripts/$worker"
             if [ -f requirements.txt ]; then

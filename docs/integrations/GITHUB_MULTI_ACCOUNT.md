@@ -61,6 +61,10 @@ Consequences that change the research above:
 - **Workers share the app login** (as Garmin does). Narrowing that is a separate,
   cross-cutting follow-up (#79), not part of this work.
 
+**The probe** is `scripts/github/github_probe.py`, driven by the guided wizard
+`bash scripts/github/token-wizard.sh`, which creates two throwaway read-only tokens,
+runs it, and helps revoke them. Its report is counts, booleans and timestamps only.
+
 **Still unverified until the probe (#74) runs:** whether sub-day `from`/`to` windows are
 honoured for commit contributions (if not, B's commit count uses GitHub's own day
 bucketing and the page says so); whether per-type totals include private-repo work at
