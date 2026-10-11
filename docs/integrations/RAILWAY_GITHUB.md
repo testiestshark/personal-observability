@@ -1,9 +1,16 @@
 # Railway-hosted GitHub sync
 
-**Status: ready to deploy, not yet deployed ([#77][issue]).** The worker, image,
-variable template and this runbook are in the repository. The Railway service, the
-two tokens and the first run are owner steps, and this status stays until they are
-done and observed.
+**Status: operational in Railway production since 2026-10-11 ([#77][issue]).** Rests on:
+
+- the first run after deployment, which wrote both accounts' trailing 14 dates;
+- the backfill from 2026-01-01, which stored every UTC date for both accounts (no
+  gaps, five kinds per date) and no commit rows for the counts-only account;
+- the first scheduled run after the tokens were sealed, which exited 0 with a
+  counts-only log.
+
+Not exercised: account A had no private repositories at go-live, so whether
+`Metadata: read` is enough for A's commit list on private repositories is untested
+(see the permissions note in step 1).
 
 Railway runs the GitHub worker as a private hourly cron job, the same shape as the
 [Garmin](RAILWAY.md) and [Hevy](RAILWAY_HEVY.md) workers:
@@ -126,9 +133,9 @@ lump over real counts.
    fix, and after sealing it means re-entering the token. Rotation (below) is
    always a replacement, which sealing does not get in the way of.
 
-5. Attach a persistent volume named `github-data` at `/data`. The worker refuses to
-   run on Railway without one, so that a cached app session cannot vanish with the
-   container.
+5. Attach a persistent volume at `/data`. The worker refuses to run on Railway
+   without one, so that a cached app session cannot vanish with the container. Only
+   the mount path matters; the name does not (production's is called `data`).
 6. Set the cron schedule to `15 * * * *` (15 minutes past each hour, UTC). Garmin
    runs at `:05` and Hevy at `:17`. Leave the start command empty: the image defaults
    to `sync` and exits when done. Railway skips a scheduled run while the previous
