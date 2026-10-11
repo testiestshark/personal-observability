@@ -43,8 +43,26 @@ The helper uploads `.garmin-sync/garmin/` to `/data/garmin/`. It never uploads
 the Garmin password. The worker signs in to Supabase afresh on every run using
 the private Railway app-login variables, avoiding shared refresh-token rotation.
 
-If Railway's GitHub app has not been granted repository access, deploy the
-checked-out commit directly instead:
+Since 2026-10-11 the service is connected to the repository's `main` branch (Service
+→ Settings → Source), so each merge to `main` redeploys it, as it does `github-sync` and
+`hevy-sync`. None of the three has watch patterns, so every merge rebuilds all of them;
+that is harmless for cron jobs. Because a worker deploys on merge, push any migration it
+depends on to hosted **before** merging.
+
+Check what a service actually built, rather than trusting a green deployment:
+
+```powershell
+railway status --json
+```
+
+In it, each service's latest deployment has `meta.commitHash` and `meta.reason`; the
+hash should match `git log -1 origin/main`. An empty hash means the service has no
+repository connection (this is how `garmin-sync` was deployed until 2026-10-11, when a
+dashboard **Redeploy** quietly rebuilt the previous upload and shipped none of the new
+worker code).
+
+If the connection is lost, or the Railway GitHub app has not been granted repository
+access, deploy the checked-out commit directly instead:
 
 ```powershell
 railway deployment up --service garmin-sync --environment production --detach --yes
@@ -52,8 +70,8 @@ railway deployment up --service garmin-sync --environment production --detach --
 
 Railway respects `.gitignore` for its source archive, and `.dockerignore`
 independently excludes `.garmin-sync/` plus all local environment files from the
-Docker build context. Granting the Railway GitHub app access later enables
-automatic redeployment from `main`; it is not required for scheduled execution.
+Docker build context. A repository connection is not required for scheduled
+execution, only for automatic redeployment from `main`.
 
 ## Verify and cut over
 
