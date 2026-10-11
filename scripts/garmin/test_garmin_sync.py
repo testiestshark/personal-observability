@@ -5,13 +5,19 @@ from unittest.mock import patch
 
 from garmin_sync import (
     SyncError,
+    activities_needing_splits,
     app_environment,
     current_london_day,
     docker_host_url,
+    has_embedded_rows,
+    is_foot_activity,
+    is_garmin_activity_id,
     normalize_activities,
     normalize_daily_health,
+    normalize_laps,
     normalize_steps,
     session_for_sync,
+    store_splits,
     validate_railway_volume,
     _vo2_max,
 )
@@ -270,6 +276,262 @@ class NormalizeActivitiesTests(unittest.TestCase):
         )
 
         self.assertEqual(rows, [])
+
+
+class IsFootActivityTests(unittest.TestCase):
+    def test_matches_the_type_keys_garmin_uses_for_pace_based_activities(self) -> None:
+        for key in ("running", "trail_running", "treadmill_running", "walking", "hiking"):
+            self.assertTrue(is_foot_activity(key), key)
+
+    def test_rejects_activities_read_as_speed_or_not_distance_based(self) -> None:
+        for key in ("cycling", "strength_training", "lap_swimming", "other"):
+            self.assertFalse(is_foot_activity(key), key)
+
+
+def _lap(**overrides: object) -> dict[str, object]:
+    lap: dict[str, object] = {
+        "lapIndex": 1,
+        "distance": 1000.0,
+        "duration": 330.4,
+        "averageHR": 148.4,
+        "elevationGain": 6.2,
+        "elevationLoss": 3.1,
+        "startLatitude": 51.5,
+        "startLongitude": -0.1,
+        "endLatitude": 51.51,
+        "endLongitude": -0.11,
+    }
+    lap.update(overrides)
+    return lap
+
+
+class NormalizeLapsTests(unittest.TestCase):
+    def test_keeps_the_agreed_fields_in_order_without_coordinates(self) -> None:
+        rows = normalize_laps(
+            {"activityId": 1, "lapDTOs": [_lap(), _lap(lapIndex=2, duration=340.0)]}
+        )
+
+        self.assertEqual(
+            rows[0],
+            {
+                "position": 0,
+                "distance_meters": 1000.0,
+                "duration_seconds": 330.4,
+                "average_heart_rate_bpm": 148,
+                "elevation_gain_meters": 6.2,
+                "elevation_loss_meters": 3.1,
+            },
+        )
+        self.assertEqual([row["position"] for row in rows], [0, 1])
+        self.assertEqual(rows[1]["duration_seconds"], 340.0)
+        for row in rows:
+            self.assertFalse([key for key in row if "atitude" in key or "ongitude" in key])
+
+    def test_missing_measurements_stay_missing_instead_of_becoming_zero(self) -> None:
+        absent, invalid = normalize_laps(
+            {
+                "lapDTOs": [
+                    {"duration": 300.0},
+                    _lap(averageHR=0, elevationGain=None, elevationLoss="n/a", distance=True),
+                ]
+            }
+        )
+
+        unreported = {
+            "distance_meters": None,
+            "average_heart_rate_bpm": None,
+            "elevation_gain_meters": None,
+            "elevation_loss_meters": None,
+        }
+        self.assertEqual(absent, {"position": 0, "duration_seconds": 300.0, **unreported})
+        self.assertEqual(invalid, {"position": 1, "duration_seconds": 330.4, **unreported})
+
+    def test_drops_a_lap_with_no_usable_duration_and_keeps_positions_contiguous(self) -> None:
+        rows = normalize_laps(
+            {
+                "lapDTOs": [
+                    _lap(duration=None),
+                    _lap(duration=0),
+                    _lap(duration=-5),
+                    "not a lap",
+                    _lap(duration=310.0),
+                ]
+            }
+        )
+
+        self.assertEqual([(row["position"], row["duration_seconds"]) for row in rows], [(0, 310.0)])
+
+    def test_an_activity_without_laps_has_no_rows(self) -> None:
+        self.assertEqual(normalize_laps({"activityId": 1}), [])
+        self.assertEqual(normalize_laps({"lapDTOs": None}), [])
+        self.assertEqual(normalize_laps({"lapDTOs": []}), [])
+
+    def test_rejects_an_unexpected_provider_response(self) -> None:
+        with self.assertRaises(SyncError):
+            normalize_laps([])
+        with self.assertRaises(SyncError):
+            normalize_laps({"lapDTOs": "oops"})
+
+
+class ActivitiesNeedingSplitsTests(unittest.TestCase):
+    def test_selects_foot_activities_that_have_no_stored_laps(self) -> None:
+        rows = [
+            {"external_id": "1", "activity_type": "running", "has_laps": False},
+            {"external_id": "2", "activity_type": "running", "has_laps": True},
+            {"external_id": "3", "activity_type": "cycling", "has_laps": False},
+            {"external_id": "4", "activity_type": "trail_running", "has_laps": False},
+        ]
+
+        self.assertEqual(activities_needing_splits(rows), ["1", "4"])
+
+    def test_ignores_an_id_garmin_cannot_look_up(self) -> None:
+        rows = [
+            {"external_id": "abc", "activity_type": "running", "has_laps": False},
+            {"external_id": "12 3", "activity_type": "running", "has_laps": False},
+        ]
+
+        self.assertEqual(activities_needing_splits(rows), [])
+
+
+class IsGarminActivityIdTests(unittest.TestCase):
+    def test_accepts_plain_ascii_numbers(self) -> None:
+        self.assertTrue(is_garmin_activity_id("12345678901"))
+
+    def test_rejects_anything_garmin_could_not_look_up_or_that_would_alter_a_query(self) -> None:
+        # "²" and Arabic-Indic digits are str.isdigit() but not integers Garmin accepts.
+        for value in ("", "abc", "12 3", "1,2", "1)", "²", "١٢", "-5", None, 12):
+            self.assertFalse(is_garmin_activity_id(value), repr(value))
+
+
+class HasEmbeddedRowsTests(unittest.TestCase):
+    def test_is_true_when_postgrest_embedded_a_row(self) -> None:
+        self.assertTrue(has_embedded_rows([{"id": "abc"}]))
+
+    def test_treats_nothing_or_anything_unexpected_as_no_laps(self) -> None:
+        for value in (None, [], {}, "3", {"id": "abc"}):
+            self.assertFalse(has_embedded_rows(value), repr(value))
+
+
+class _FakeGarmin:
+    def __init__(self, payloads: dict[str, object]) -> None:
+        self.payloads = payloads
+        self.requested: list[str] = []
+
+    def get_activity_splits(self, activity_id: str) -> object:
+        self.requested.append(activity_id)
+        payload = self.payloads[activity_id]
+        if isinstance(payload, Exception):
+            raise payload
+        return payload
+
+
+class _FakeSupabase:
+    def __init__(self, fail_for: set[str] | None = None) -> None:
+        self.stored: dict[str, list[dict[str, object]]] = {}
+        self.fail_for = fail_for or set()
+
+    def replace_laps(
+        self, external_id: str, laps: list[dict[str, object]], session: dict[str, object]
+    ) -> None:
+        if external_id in self.fail_for:
+            raise SyncError("Supabase request failed (500): boom")
+        self.stored[external_id] = laps
+
+
+class StoreSplitsTests(unittest.TestCase):
+    def test_stores_each_activity_and_survives_one_failing(self) -> None:
+        garmin = _FakeGarmin(
+            {
+                "1": {"lapDTOs": [_lap()]},
+                "2": RuntimeError("Garmin rate limit"),
+                "3": {"lapDTOs": [_lap(), _lap(lapIndex=2)]},
+                "4": {"lapDTOs": []},
+                "5": {"lapDTOs": [_lap()]},
+            }
+        )
+        supabase = _FakeSupabase(fail_for={"5"})
+
+        with patch("sys.stderr"):
+            result = store_splits(
+                garmin, supabase, {"access_token": "t"}, ["1", "2", "3", "4", "5"], pause_seconds=0
+            )
+
+        self.assertEqual(garmin.requested, ["1", "2", "3", "4", "5"])
+        self.assertEqual(sorted(supabase.stored), ["1", "3"])
+        self.assertEqual(len(supabase.stored["3"]), 2)
+        self.assertEqual((result.stored, result.failed), (2, 2))
+
+    def test_stops_after_repeated_failures_in_a_row_instead_of_hammering_garmin(self) -> None:
+        # Seven activities, all failing: the likeliest cause is a rate limit, and
+        # more requests would only make it worse.
+        garmin = _FakeGarmin({str(n): RuntimeError("429") for n in range(7)})
+
+        with patch("sys.stderr"):
+            result = store_splits(
+                garmin,
+                _FakeSupabase(),
+                {},
+                [str(n) for n in range(7)],
+                pause_seconds=0,
+                max_consecutive_failures=3,
+            )
+
+        self.assertEqual(garmin.requested, ["0", "1", "2"])
+        self.assertEqual((result.stored, result.failed, result.stopped_early), (0, 3, True))
+
+    def test_a_success_between_failures_resets_the_streak(self) -> None:
+        garmin = _FakeGarmin(
+            {
+                "0": RuntimeError("x"),
+                "1": RuntimeError("x"),
+                "2": {"lapDTOs": [_lap()]},
+                "3": RuntimeError("x"),
+                "4": RuntimeError("x"),
+            }
+        )
+
+        with patch("sys.stderr"):
+            result = store_splits(
+                garmin,
+                _FakeSupabase(),
+                {},
+                ["0", "1", "2", "3", "4"],
+                pause_seconds=0,
+                max_consecutive_failures=3,
+            )
+
+        self.assertEqual(len(garmin.requested), 5)
+        self.assertFalse(result.stopped_early)
+
+    def test_a_limit_counts_activities_stored_so_empty_ones_do_not_use_it_up(self) -> None:
+        # Activities Garmin reports no laps for would otherwise sit at the top of a
+        # newest-first list and starve older runs on every limited backfill.
+        garmin = _FakeGarmin(
+            {
+                "0": {"lapDTOs": []},
+                "1": {"lapDTOs": [_lap()]},
+                "2": {"lapDTOs": []},
+                "3": {"lapDTOs": [_lap()]},
+                "4": {"lapDTOs": [_lap()]},
+            }
+        )
+        supabase = _FakeSupabase()
+
+        result = store_splits(
+            garmin, supabase, {}, ["0", "1", "2", "3", "4"], pause_seconds=0, max_stored=2
+        )
+
+        self.assertEqual(garmin.requested, ["0", "1", "2", "3"])
+        self.assertEqual(sorted(supabase.stored), ["1", "3"])
+        self.assertEqual(result.stored, 2)
+
+    def test_an_empty_list_asks_garmin_for_nothing(self) -> None:
+        garmin = _FakeGarmin({})
+
+        result = store_splits(garmin, _FakeSupabase(), {}, [], pause_seconds=0)
+
+        self.assertEqual(garmin.requested, [])
+        self.assertEqual((result.stored, result.failed), (0, 0))
 
 
 class RailwayVolumeTests(unittest.TestCase):

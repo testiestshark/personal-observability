@@ -11,10 +11,12 @@ import argparse
 import getpass
 import json
 import os
+import re
 import stat
 import sys
 import time
 import unittest
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,13 @@ SOURCE = "garmin"
 PROVIDER = "garmin_connect_unofficial"
 DEFAULT_DAYS = 7
 LONDON = ZoneInfo("Europe/London")
+# Splits cost one Garmin request per activity, so requests are spaced out: a
+# backfill of a long history would otherwise be a burst against an undocumented API.
+SPLITS_PAUSE_SECONDS = 1.0
+# Failures this many in a row mean Garmin is rate-limiting or down: stop asking.
+MAX_CONSECUTIVE_SPLIT_FAILURES = 5
+ACTIVITIES_PAGE_SIZE = 500
+FOOT_ACTIVITY_PATTERN = re.compile(r"running|walking|hiking")
 
 
 class SyncError(RuntimeError):
@@ -289,6 +298,145 @@ def normalize_activities(
     return sorted(normalized_by_id.values(), key=lambda row: row["started_at"])
 
 
+def is_foot_activity(activity_type: str) -> bool:
+    """Whether an activity is read as pace, which is where splits are kept.
+
+    A copy of isFootActivity in src/lib/health/garmin-activity.ts, which is
+    what decides how the app reads the activity: change both together. Garmin's
+    type keys vary ("trail_running", "treadmill_running"), so it matches on the
+    word.
+    """
+    return FOOT_ACTIVITY_PATTERN.search(activity_type) is not None
+
+
+def normalize_laps(payload: Any) -> list[dict[str, Any]]:
+    """Translate Garmin's per-activity splits into lap rows, in recorded order.
+
+    Each measurement is copied by name, so the start and end coordinates Garmin
+    returns with every lap are never carried (route maps are a recorded
+    non-goal). A lap without a usable duration says nothing and is dropped;
+    positions stay contiguous. Missing measurements remain missing.
+    """
+    if not isinstance(payload, dict):
+        raise SyncError("Garmin returned an unexpected splits response.")
+    laps = payload.get("lapDTOs")
+    if laps is None:
+        return []
+    if not isinstance(laps, list):
+        raise SyncError("Garmin returned an unexpected splits response.")
+
+    rows: list[dict[str, Any]] = []
+    for lap in laps:
+        if not isinstance(lap, dict):
+            continue
+        duration = _number_non_negative(lap.get("duration"))
+        if not duration:
+            continue
+        heart_rate = _whole_non_negative(lap.get("averageHR"))
+        if heart_rate is not None and not 1 <= heart_rate <= 300:
+            heart_rate = None
+        rows.append(
+            {
+                "position": len(rows),
+                "distance_meters": _number_non_negative(lap.get("distance")),
+                "duration_seconds": duration,
+                "average_heart_rate_bpm": heart_rate,
+                "elevation_gain_meters": _number_non_negative(lap.get("elevationGain")),
+                "elevation_loss_meters": _number_non_negative(lap.get("elevationLoss")),
+            }
+        )
+    return rows
+
+
+def has_embedded_rows(value: Any) -> bool:
+    """Whether PostgREST embedded at least one row of a child table."""
+    return isinstance(value, list) and len(value) > 0
+
+
+def is_garmin_activity_id(value: Any) -> bool:
+    """Whether a value is a plain number Garmin's lookup accepts.
+
+    ASCII only: str.isdigit() also accepts "\u00b2", which Garmin's integer
+    parse rejects. The id goes into a query string, so nothing else gets in.
+    """
+    return isinstance(value, str) and value.isascii() and value.isdecimal()
+
+
+def activities_needing_splits(rows: list[dict[str, Any]]) -> list[str]:
+    """External ids of foot activities that have no stored laps yet.
+
+    Takes `{"external_id", "activity_type", "has_laps"}` rows.
+    """
+    return [
+        row["external_id"]
+        for row in rows
+        if is_garmin_activity_id(row.get("external_id"))
+        and is_foot_activity(str(row.get("activity_type") or ""))
+        and row.get("has_laps") is False
+    ]
+
+
+@dataclass
+class SplitsResult:
+    """How many activities got laps stored, and how many failed along the way."""
+
+    stored: int = 0
+    failed: int = 0
+    stopped_early: bool = False
+
+
+def store_splits(
+    garmin: Any,
+    supabase: Any,
+    session: dict[str, Any],
+    external_ids: list[str],
+    pause_seconds: float = SPLITS_PAUSE_SECONDS,
+    max_stored: int | None = None,
+    max_consecutive_failures: int = MAX_CONSECUTIVE_SPLIT_FAILURES,
+) -> SplitsResult:
+    """Fetch and store the laps of each activity, one failure at a time.
+
+    Splits are an extra on top of data the run has already stored, so a failed
+    lookup or write is a warning for that activity, not a failed sync: it is
+    retried on the next run while the activity is still in the window (or by a
+    backfill). An activity Garmin reports no laps for is left alone.
+
+    `max_stored` stops once that many activities have laps, so activities with
+    none do not use up a limit. A run of `max_consecutive_failures` failures
+    stops the loop: that is a rate limit or an outage, and more requests only
+    make it worse.
+    """
+    result = SplitsResult()
+    consecutive_failures = 0
+    for index, external_id in enumerate(external_ids):
+        if max_stored is not None and result.stored >= max_stored:
+            break
+        if index and pause_seconds:
+            time.sleep(pause_seconds)
+        try:
+            laps = normalize_laps(garmin.get_activity_splits(external_id))
+            if laps:
+                supabase.replace_laps(external_id, laps, session)
+                result.stored += 1
+            consecutive_failures = 0
+        except Exception as error:  # Garmin's exception hierarchy changes between releases.
+            result.failed += 1
+            consecutive_failures += 1
+            print(
+                f"Warning: splits for Garmin activity {external_id} were unavailable: {error}",
+                file=sys.stderr,
+            )
+            if consecutive_failures >= max_consecutive_failures:
+                result.stopped_early = True
+                print(
+                    f"Warning: {consecutive_failures} splits lookups failed in a row; "
+                    "stopping. The remaining activities are retried on the next run.",
+                    file=sys.stderr,
+                )
+                break
+    return result
+
+
 def normalize_daily_health(
     rows: Any,
     user_id: str,
@@ -473,12 +621,17 @@ class SupabaseSession:
         self._save(refreshed)
         return refreshed
 
-    def upsert(self, rows: list[dict[str, Any]], session: dict[str, Any]) -> None:
-        if not rows:
-            return
+    @staticmethod
+    def _access_token(session: dict[str, Any]) -> str:
         access_token = session.get("access_token")
         if not isinstance(access_token, str) or not access_token:
             raise SyncError("The cached app access token is missing. Run setup again.")
+        return access_token
+
+    def upsert(self, rows: list[dict[str, Any]], session: dict[str, Any]) -> None:
+        if not rows:
+            return
+        access_token = self._access_token(session)
         self._request(
             "POST",
             "/rest/v1/daily_health_metrics?" + urlencode({"on_conflict": "user_id,day,source"}),
@@ -492,9 +645,7 @@ class SupabaseSession:
     ) -> None:
         if not rows:
             return
-        access_token = session.get("access_token")
-        if not isinstance(access_token, str) or not access_token:
-            raise SyncError("The cached app access token is missing. Run setup again.")
+        access_token = self._access_token(session)
         self._request(
             "POST",
             "/rest/v1/fitness_activities?"
@@ -502,6 +653,65 @@ class SupabaseSession:
             rows,
             access_token=access_token,
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+
+    def garmin_activities(
+        self, session: dict[str, Any], external_ids: list[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """Garmin activities and whether laps are stored for each, newest first.
+
+        Pass `external_ids` to look only at those; None reads them all, a page at
+        a time. Row Level Security limits this to the signed-in user's rows. One
+        embedded lap is enough to answer "has laps", and avoids PostgREST
+        aggregates, which a hosted project can have switched off.
+        """
+        if external_ids is not None:
+            external_ids = [value for value in external_ids if is_garmin_activity_id(value)]
+            if not external_ids:
+                return []
+        access_token = self._access_token(session)
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            query = {
+                "select": "external_id,activity_type,fitness_activity_laps(id)",
+                "fitness_activity_laps.limit": "1",
+                "source": "eq.garmin",
+                "order": "started_at.desc,id.asc",
+                "limit": str(ACTIVITIES_PAGE_SIZE),
+                "offset": str(offset),
+            }
+            if external_ids is not None:
+                query["external_id"] = f"in.({','.join(external_ids)})"
+            page = self._request(
+                "GET",
+                "/rest/v1/fitness_activities?" + urlencode(query),
+                access_token=access_token,
+            )
+            if not isinstance(page, list):
+                raise SyncError("Supabase returned an unexpected activities response.")
+            rows.extend(
+                {
+                    "external_id": item.get("external_id"),
+                    "activity_type": item.get("activity_type"),
+                    "has_laps": has_embedded_rows(item.get("fitness_activity_laps")),
+                }
+                for item in page
+                if isinstance(item, dict)
+            )
+            if len(page) < ACTIVITIES_PAGE_SIZE:
+                return rows
+            offset += ACTIVITIES_PAGE_SIZE
+
+    def replace_laps(
+        self, external_id: str, laps: list[dict[str, Any]], session: dict[str, Any]
+    ) -> None:
+        """Replace one Garmin activity's laps as a unit, through the database function."""
+        self._request(
+            "POST",
+            "/rest/v1/rpc/replace_fitness_activity_laps",
+            {"p_source": SOURCE, "p_external_id": external_id, "p_laps": laps},
+            access_token=self._access_token(session),
         )
 
 
@@ -662,6 +872,52 @@ def sync(days: int) -> None:
         f"plus {len(activities)} recorded activity/activities."
     )
 
+    # The window's activities are revisited every run, but their splits are
+    # asked for only while none are stored: one request per new activity, not
+    # one per activity per run.
+    foot_ids = [
+        row["external_id"] for row in activities if is_foot_activity(row["activity_type"])
+    ]
+    try:
+        pending = activities_needing_splits(supabase.garmin_activities(session, foot_ids))
+    except Exception as error:  # a timeout or bad JSON must not fail a sync that has stored
+        print(f"Warning: stored splits could not be checked: {error}", file=sys.stderr)
+        pending = []
+    if pending:
+        splits = store_splits(garmin, supabase, session, pending)
+        print(f"Stored splits for {splits.stored} of {len(pending)} activity/activities.")
+
+
+def backfill_splits(limit: int | None) -> None:
+    """One-off: fetch splits for every stored foot activity that has none yet.
+
+    Safe to repeat: activities that already have laps are skipped, so a run cut
+    short by --limit, a rate limit or a failure is continued by running it
+    again. Newest activities come first. `--limit` counts activities that got
+    laps, not lookups, so activities Garmin has no laps for cannot use it up.
+    """
+    if limit is not None and limit < 1:
+        raise SyncError("--limit must be at least 1.")
+
+    supabase, token_store = configuration()
+    session = session_for_sync(supabase)
+    garmin = Garmin()
+    garmin.login(str(token_store))
+
+    pending = activities_needing_splits(supabase.garmin_activities(session))
+    if not pending:
+        print("No stored Garmin foot activities are missing splits.")
+        return
+
+    print(f"Fetching splits for {len(pending)} activity/activities missing them.")
+    splits = store_splits(garmin, supabase, session, pending, max_stored=limit)
+    print(
+        f"Stored splits for {splits.stored} activity/activities "
+        f"({splits.failed} failed). {len(pending) - splits.stored} still without splits."
+    )
+    if splits.stopped_early:
+        print("Stopped early after repeated failures; run it again later to continue.")
+
 
 def status() -> None:
     supabase, token_store = configuration()
@@ -694,6 +950,13 @@ def main() -> int:
         "sync", help="Fetch and upsert recent health and recorded activities."
     )
     sync_parser.add_argument("--days", type=int, default=DEFAULT_DAYS)
+    backfill_parser = subcommands.add_parser(
+        "backfill-splits",
+        help="Fetch splits for stored runs and walks that have none (one-off, repeatable).",
+    )
+    backfill_parser.add_argument(
+        "--limit", type=int, default=None, help="Store splits for at most this many activities, newest first."
+    )
     subcommands.add_parser("status", help="Check whether both cached sessions exist.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
     args = parser.parse_args()
@@ -705,6 +968,8 @@ def main() -> int:
             setup_app()
         elif args.command == "sync":
             sync(args.days)
+        elif args.command == "backfill-splits":
+            backfill_splits(args.limit)
         elif args.command == "status":
             status()
         else:

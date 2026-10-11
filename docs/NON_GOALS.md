@@ -41,7 +41,8 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   2026-10-10 (#72). The Garmin worker deliberately omits GPS data
   ([GARMIN.md](integrations/GARMIN.md)), and a hosted copy of run routes would hold the
   owner's home address. The activity detail page shows the stored summary metrics, and
-  splits (#95) are time, pace and heart rate per km or lap with no positions. Do not add
+  splits (#95) are time, distance, pace, heart rate and elevation per lap, with no
+  positions. Do not add
   start or end coordinates to laps "for completeness". Reopen only if the owner decides
   a map is worth keeping location data for.
 

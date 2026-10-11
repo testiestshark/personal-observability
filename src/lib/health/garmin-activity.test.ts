@@ -1,16 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import { formatActivityTime, formatActivityType } from "./format";
+import { formatActivityTime, formatActivityType, formatKilometres } from "./format";
 import {
   formatAveragePace,
   formatAverageSpeed,
   garminActivityHeader,
   garminActivitySections,
+  garminSplits,
   humaniseTrainingEffectLabel,
   isFootActivity,
+  SPLIT_BAR_MIN_SHARE,
   type GarminSection,
+  type SplitRow,
 } from "./garmin-activity";
-import type { GarminActivityDetail } from "./health.functions";
+import type { GarminActivityDetail, GarminLap } from "./health.functions";
 
 /** A run with only the day-view fields; every secondary metric is null. */
 const run: GarminActivityDetail = {
@@ -42,6 +45,7 @@ const run: GarminActivityDetail = {
   anaerobicTrainingEffect: null,
   trainingLoad: null,
   trainingEffectLabel: null,
+  laps: [],
 };
 
 /** A run with every secondary metric the worker stores today (power and load stay null). */
@@ -483,5 +487,169 @@ describe("garminActivitySections", () => {
     for (const activity of [run, fullRun]) {
       for (const s of garminActivitySections(activity)) expect(s.rows.length).toBeGreaterThan(0);
     }
+  });
+});
+
+/** A 1 km lap at 5:30 /km; override what a case is about. */
+function lap(position: number, overrides: Partial<GarminLap> = {}): GarminLap {
+  return {
+    position,
+    distanceMeters: 1_000,
+    durationSeconds: 330,
+    averageHeartRateBpm: 148,
+    elevationGainMeters: 6,
+    elevationLossMeters: 3,
+    ...overrides,
+  };
+}
+
+function withLaps(laps: GarminLap[], overrides: Partial<GarminActivityDetail> = {}) {
+  return { ...run, laps, ...overrides };
+}
+
+/** A row by index, failing the test with a clear message rather than on `undefined`. */
+function at(rows: SplitRow[], index: number): SplitRow {
+  const row = rows[index];
+  if (!row) throw new Error(`No split row ${index}; there are ${rows.length}`);
+  return row;
+}
+
+describe("garminSplits", () => {
+  it("is empty for a run with no stored laps, as every run before the backfill is", () => {
+    expect(garminSplits(run)).toEqual([]);
+  });
+
+  it("is empty for a single lap, which would only repeat the headline", () => {
+    expect(garminSplits(withLaps([lap(0)]))).toEqual([]);
+  });
+
+  it("is empty for an activity read as speed rather than pace, whatever laps it has", () => {
+    const ride = withLaps([lap(0), lap(1)], { type: "cycling" });
+    expect(garminSplits(ride)).toEqual([]);
+  });
+
+  it("shows each lap's number, time, pace, heart rate and net elevation", () => {
+    const rows = garminSplits(
+      withLaps([
+        lap(0),
+        lap(1, {
+          durationSeconds: 345.4,
+          averageHeartRateBpm: 151.2,
+          elevationGainMeters: 2,
+          elevationLossMeters: 10,
+        }),
+      ]),
+    );
+
+    expect(at(rows, 0)).toMatchObject({
+      lapNumber: "1",
+      time: "5:30",
+      pace: "5:30",
+      heartRate: "148",
+      elevation: "+3 m",
+    });
+    expect(at(rows, 1)).toMatchObject({
+      lapNumber: "2",
+      time: "5:45",
+      pace: "5:45",
+      heartRate: "151",
+      elevation: "-8 m",
+    });
+  });
+
+  it("shows a lap that climbed as much as it fell as 0 m, not as a gap", () => {
+    const rows = garminSplits(
+      withLaps([lap(0, { elevationGainMeters: 4, elevationLossMeters: 4 }), lap(1)]),
+    );
+    expect(at(rows, 0).elevation).toBe("0 m");
+  });
+
+  it("orders laps by position whatever order they arrive in", () => {
+    const rows = garminSplits(
+      withLaps([lap(2, { durationSeconds: 360 }), lap(0), lap(1, { durationSeconds: 340 })]),
+    );
+    expect(rows.map((row) => [row.lapNumber, row.time])).toEqual([
+      ["1", "5:30"],
+      ["2", "5:40"],
+      ["3", "6:00"],
+    ]);
+  });
+
+  it("reads a measurement Garmin did not report as a dash, never as zero", () => {
+    const bare = at(
+      garminSplits(
+        withLaps([
+          lap(0, {
+            distanceMeters: null,
+            averageHeartRateBpm: null,
+            elevationGainMeters: null,
+            elevationLossMeters: null,
+          }),
+          lap(1),
+        ]),
+      ),
+      0,
+    );
+
+    expect(bare).toMatchObject({ pace: "—", heartRate: "—", elevation: "—", barShare: null });
+    expect(bare.time).toBe("5:30");
+  });
+
+  it("needs both gain and loss for an elevation change", () => {
+    const gainOnly = at(garminSplits(withLaps([lap(0, { elevationLossMeters: null }), lap(1)])), 0);
+    expect(gainOnly.elevation).toBe("—");
+  });
+
+  it("notes the distance only of a lap shorter than the rest, such as the last", () => {
+    const rows = garminSplits(withLaps([lap(0), lap(1), lap(2, { distanceMeters: 340 })]));
+    expect(rows.map((row) => row.distanceNote)).toEqual([null, null, formatKilometres(340)]);
+  });
+
+  it("gives no pace to a lap under the minimum shown distance", () => {
+    const rows = garminSplits(
+      withLaps([lap(0), lap(1), lap(2, { distanceMeters: 60, durationSeconds: 20 })]),
+    );
+    expect(at(rows, 2)).toMatchObject({
+      pace: "—",
+      barShare: null,
+      distanceNote: formatKilometres(60),
+    });
+  });
+
+  describe("pace bars", () => {
+    it("makes the fastest lap the longest bar and the slowest the shortest", () => {
+      const rows = garminSplits(
+        withLaps([
+          lap(0, { durationSeconds: 330 }),
+          lap(1, { durationSeconds: 345 }),
+          lap(2, { durationSeconds: 360 }),
+        ]),
+      );
+
+      expect(at(rows, 0).barShare).toBe(1);
+      expect(at(rows, 2).barShare).toBe(SPLIT_BAR_MIN_SHARE);
+      expect(at(rows, 1).barShare).toBeGreaterThan(SPLIT_BAR_MIN_SHARE);
+      expect(at(rows, 1).barShare).toBeLessThan(1);
+    });
+
+    it("draws equal bars when every lap is equally fast", () => {
+      const rows = garminSplits(withLaps([lap(0), lap(1), lap(2)]));
+      expect(rows.map((row) => row.barShare)).toEqual([1, 1, 1]);
+    });
+
+    it("does not let a short sprint finish rescale the full laps", () => {
+      const rows = garminSplits(
+        withLaps([
+          lap(0, { durationSeconds: 330 }),
+          lap(1, { durationSeconds: 340 }),
+          lap(2, { distanceMeters: 200, durationSeconds: 40 }),
+        ]),
+      );
+
+      // The sprint is faster than either full lap but only 200 m long.
+      expect(at(rows, 0).barShare).toBe(1);
+      expect(at(rows, 1).barShare).toBe(SPLIT_BAR_MIN_SHARE);
+      expect(at(rows, 2).barShare).toBe(1);
+    });
   });
 });

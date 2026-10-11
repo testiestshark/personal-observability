@@ -71,10 +71,26 @@ export type HevyActivityDetail = FitnessActivity & {
 };
 
 /**
+ * One lap of a Garmin activity: with the watch's auto-lap at 1 km, one km. Pace
+ * is not stored; it is worked out from time and distance. There are no
+ * coordinates, by design (the route map is a recorded non-goal).
+ */
+export type GarminLap = {
+  /** Zero-based place in the activity; the lookup returns laps in this order. */
+  position: number;
+  distanceMeters: number | null;
+  durationSeconds: number;
+  averageHeartRateBpm: number | null;
+  elevationGainMeters: number | null;
+  elevationLossMeters: number | null;
+};
+
+/**
  * A Garmin activity for its detail page. It has no exercises: the lookup does
  * not fetch them. Beyond the day-view fields it carries the secondary metrics
  * the worker stores; each is null when Garmin did not report it, which is not
- * the same as 0.
+ * the same as 0. `laps` is empty for an activity with none stored (a ride, or
+ * a run from before splits were synced).
  */
 export type GarminActivityDetail = FitnessActivity & {
   source: "garmin";
@@ -96,6 +112,7 @@ export type GarminActivityDetail = FitnessActivity & {
   trainingLoad: number | null;
   /** Garmin's key, such as "AEROBIC_BASE"; humanised for display. */
   trainingEffectLabel: string | null;
+  laps: GarminLap[];
 };
 
 /** One activity for its detail page; `source` says which shape it is. */
@@ -196,9 +213,9 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
 
 /**
  * One activity for its detail page, shaped by source: a Hevy row also loads its
- * exercises and sets, a Garmin row does not. One query reads the row's own
+ * exercises and sets, a Garmin row its laps. One query reads the row's own
  * columns, the Garmin metrics included (they sit on the same row, so a second
- * round trip would buy nothing); only Hevy pays for the exercises query.
+ * round trip would buy nothing); each source pays for its own child query only.
  */
 export const getFitnessActivity = createServerFn({ method: "GET" })
   .validator((data: { id: string }) => ({ id: activityIdSchema.parse(data.id) }))
@@ -219,6 +236,20 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
 
     const activity = toFitnessActivity(row);
     if (activity.source === "garmin") {
+      const { data: laps, error: lapsError } = await supabase
+        .from("fitness_activity_laps")
+        .select(
+          "position, distance_meters, duration_seconds, average_heart_rate_bpm, elevation_gain_meters, elevation_loss_meters",
+        )
+        .eq("user_id", userId)
+        .eq("fitness_activity_id", data.id)
+        .order("position", { ascending: true });
+
+      // Splits are an extra on the page, not the page: a laps query that fails
+      // (the table not deployed to this database yet, say) leaves the activity
+      // readable without them rather than turning it into an error page.
+      if (lapsError) console.error("Could not load laps for activity", data.id, lapsError.message);
+
       return {
         ...activity,
         source: "garmin",
@@ -239,6 +270,14 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
         anaerobicTrainingEffect: row.anaerobic_training_effect,
         trainingLoad: row.training_load,
         trainingEffectLabel: row.training_effect_label,
+        laps: (laps ?? []).map((lap) => ({
+          position: lap.position,
+          distanceMeters: lap.distance_meters,
+          durationSeconds: lap.duration_seconds,
+          averageHeartRateBpm: lap.average_heart_rate_bpm,
+          elevationGainMeters: lap.elevation_gain_meters,
+          elevationLossMeters: lap.elevation_loss_meters,
+        })),
       };
     }
 

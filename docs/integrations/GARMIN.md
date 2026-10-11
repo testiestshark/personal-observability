@@ -24,7 +24,8 @@ linked on 2026-09-28 ([MYFITNESSPAL.md](MYFITNESSPAL.md)). The calorie goal is t
 daily target set in MyFitnessPal, stored per day as Garmin reports it for that day
 (not yet checked across a goal change: the seven-day re-fetch rewrites recent days if
 Garmin backdates a new goal). On its own it does not keep a day's row. Garmin activities retain useful summary
-fields but deliberately omit route coordinates. Detailed gym exercises and sets
+fields but deliberately omit route coordinates. Runs and walks also keep their
+per-lap splits ([below](#run-splits)). Detailed gym exercises and sets
 belong to the separate Hevy integration.
 
 The worker fetches the latest seven days on every run. This intentionally
@@ -99,6 +100,54 @@ retains:
 
 Authenticated users can only read and modify their own rows. Anonymous table
 access is revoked, and all four authenticated operations are protected by RLS.
+
+## Run splits
+
+`public.fitness_activity_laps` holds one row per lap of a run or walk, shown as the
+**Splits** table on the activity detail page (`/activities/$id`): each lap's time, pace,
+average heart rate and net elevation, with a bar per pace so a fade or a fast finish is
+visible at a glance. It is a child of `fitness_activities`, following the
+`fitness_exercises` precedent (own RLS with four policies, `anon` revoked, deleted with
+its activity).
+
+- **Laps are Garmin's own.** The worker stores `lapDTOs` from the per-activity splits
+  endpoint in recorded order, so with the watch's auto-lap at 1 km they are per-km splits.
+  Garmin's response does not say whether a lap was automatic or manual, so the table does
+  not claim to: a lap shorter than the longest shows its distance, which is how the last
+  partial km (or a manual lap) reads.
+- **Fields:** time, distance, average heart rate, elevation gain and loss. Pace is worked
+  out in the app from time and distance. Cadence is left out: the activity already shows
+  it, and per-km it mostly repeats that.
+- **No coordinates.** Garmin returns start and end positions for every lap; the worker
+  copies fields by name and never carries them (route maps are a non-goal in
+  [NON_GOALS.md](../NON_GOALS.md)).
+- **Foot activities only** (running, walking, hiking type keys), and only when there are at
+  least two laps; a single lap would repeat the headline.
+
+**Cost.** Splits are one extra Garmin request per activity, not per run. Each sync asks
+only for foot activities in its seven-day window that have **no laps stored yet**, so a new
+run costs one request once. A lookup that fails, or an activity with no laps, is a warning
+and is retried on the next run while the activity is still in the window; it never fails
+the sync. Requests are spaced one second apart, and five failures in a row stop the run:
+that is a rate limit or an outage, and more requests would only make it worse.
+
+**Backfill (one-off).** Runs from before this shipped have no laps. After the migration is
+applied, fetch them once, newest first:
+
+```powershell
+bun run garmin:backfill-splits              # local Supabase
+bun run garmin:backfill-splits:live         # hosted Supabase
+bun run garmin:backfill-splits --limit 20   # store at most 20, to try it or to stay under a rate limit
+```
+
+It is safe to repeat: activities that already have laps are skipped, so a run cut short is
+finished by running it again. `--limit` counts activities that got laps, so activities Garmin
+reports no laps for do not use it up; those are asked about again on each run.
+
+**Verification.** The table and its replace function follow the roles and ownership policy
+([ARCHITECTURE.md](../ARCHITECTURE.md#roles-and-ownership-policy)). Run
+`scripts/verify-fitness-activity-laps-rls.sql` after the migration, locally and again
+against hosted; it uses two accounts and rolls everything back.
 
 ## Live architecture
 
