@@ -7,10 +7,13 @@ from github_probe import (
     EXPIRY_HEADER,
     AccountSpec,
     ProbeError,
+    RawResponse,
     SCOPES_HEADER,
     classify_commit_window,
     classify_halves,
+    direct_fetch_audit,
     exposure_audit,
+    graphql_verdict,
     inclusive_to,
     iso_z,
     load_env_file,
@@ -18,7 +21,9 @@ from github_probe import (
     london_day_window,
     named,
     parse_scopes,
+    parse_target,
     probe_account,
+    rest_verdict,
     scope_lines,
     scrub,
     specs_from,
@@ -390,6 +395,200 @@ class ExposureAuditTests(unittest.TestCase):
         self.assertFalse(named(None))
         self.assertFalse(named("   "))
         self.assertFalse(named(5))
+
+
+PRIVATE_IDS = {
+    "GITHUB_PROBE_PR": "alice/acme-secret-repo#12",
+    "GITHUB_PROBE_ISSUE": "alice/acme-secret-repo#7",
+    "GITHUB_PROBE_COMMIT": "alice/acme-secret-repo@" + "ab" * 20,
+    "GITHUB_PROBE_FILE": "alice/acme-secret-repo:src/payroll/secret-plan.md@main",
+}
+PRIVATE_FRAGMENTS = ["acme", "alice", "secret", "payroll", "abab"]
+
+
+def rest_reply(status, headers=None):
+    return RawResponse(status, headers or {}, {"title": "Secret PR title"} if status == 200 else None)
+
+
+def graphql_reply(node=None, error_types=(), status=200):
+    errors = [{"type": t, "message": "Could not resolve to a Repository named acme-secret-repo"} for t in error_types]
+    payload = {"data": {"repository": node}, "errors": errors} if errors else {"data": {"repository": node}}
+    return RawResponse(status, {}, payload)
+
+
+class DirectFetchClient:
+    """Answers each route with a fixed reply. `readable` ids come back 200 / non-null."""
+
+    def __init__(self, rest=None, graphql=None):
+        self.rest = rest if rest is not None else rest_reply(404)
+        self.graphql = graphql if graphql is not None else graphql_reply(None, ["NOT_FOUND"])
+        self.requests = []
+
+    def fetch_rest(self, path):
+        self.requests.append(("rest", path))
+        return self.rest
+
+    def fetch_graphql(self, query, variables):
+        self.requests.append(("graphql", query, variables))
+        return self.graphql
+
+
+READABLE = DirectFetchClient(
+    rest=rest_reply(200),
+    graphql=RawResponse(200, {}, {"data": {"repository": {"pullRequest": {"id": "PR_x"}, "object": {"oid": "ab"}, "issue": {"id": "I_x"}}}}),
+)
+
+
+class ParseTargetTests(unittest.TestCase):
+    def test_each_kind_parses_to_its_rest_path(self):
+        pr = parse_target("pull request", PRIVATE_IDS["GITHUB_PROBE_PR"])
+        self.assertEqual(pr.rest_path(), "/repos/alice/acme-secret-repo/pulls/12")
+        issue = parse_target("issue", PRIVATE_IDS["GITHUB_PROBE_ISSUE"])
+        self.assertEqual(issue.rest_path(), "/repos/alice/acme-secret-repo/issues/7")
+        commit = parse_target("commit", PRIVATE_IDS["GITHUB_PROBE_COMMIT"])
+        self.assertEqual(commit.rest_path(), "/repos/alice/acme-secret-repo/commits/" + "ab" * 20)
+        file = parse_target("file", PRIVATE_IDS["GITHUB_PROBE_FILE"])
+        self.assertEqual(file.rest_path(), "/repos/alice/acme-secret-repo/contents/src/payroll/secret-plan.md?ref=main")
+
+    def test_a_file_without_a_ref_uses_the_default_branch(self):
+        file = parse_target("file", "alice/acme-secret-repo:README.md")
+        self.assertEqual(file.rest_path(), "/repos/alice/acme-secret-repo/contents/README.md")
+        _, variables, _ = file.graphql()
+        self.assertEqual(variables["expression"], "HEAD:README.md")
+
+    def test_a_malformed_id_is_rejected_without_echoing_it(self):
+        for kind, text in [
+            ("pull request", "alice/acme-secret-repo/12"),
+            ("pull request", "alice/acme-secret-repo#0"),
+            ("commit", "alice/acme-secret-repo@abc123"),  # abbreviated: GraphQL needs the full id
+            ("file", "alice/acme-secret-repo:../../etc/passwd"),
+            ("issue", "alice/../admin#3"),
+        ]:
+            with self.assertRaises(ProbeError) as raised:
+                parse_target(kind, text)
+            self.assertNotIn("acme", str(raised.exception))
+            self.assertNotIn("alice", str(raised.exception))
+
+
+class RestVerdictTests(unittest.TestCase):
+    def test_200_is_exposed(self):
+        self.assertEqual(rest_verdict(rest_reply(200)), "exposed")
+
+    def test_404_and_a_plain_403_are_refused(self):
+        self.assertEqual(rest_verdict(rest_reply(404)), "refused")
+        self.assertEqual(rest_verdict(rest_reply(403)), "refused")
+
+    def test_a_rate_limited_403_is_not_a_refusal(self):
+        # GitHub answers a rate limit with 403 too; that must never read as a pass.
+        self.assertEqual(rest_verdict(rest_reply(403, {"x-ratelimit-remaining": "0"})), "inconclusive")
+        self.assertEqual(rest_verdict(rest_reply(403, {"retry-after": "60"})), "inconclusive")
+
+    def test_auth_failures_server_errors_and_unreachable_are_inconclusive(self):
+        for status in (401, 429, 500, 502, 0):
+            self.assertEqual(rest_verdict(rest_reply(status)), "inconclusive", status)
+
+
+class GraphqlVerdictTests(unittest.TestCase):
+    PATH = ("repository", "pullRequest")
+
+    def test_a_returned_node_is_exposed(self):
+        reply = graphql_reply({"pullRequest": {"id": "PR_x"}})
+        self.assertEqual(graphql_verdict(reply, self.PATH), "exposed")
+
+    def test_not_found_forbidden_and_insufficient_scopes_are_refused(self):
+        for kind in ("NOT_FOUND", "FORBIDDEN", "INSUFFICIENT_SCOPES"):
+            self.assertEqual(graphql_verdict(graphql_reply(None, [kind]), self.PATH), "refused", kind)
+
+    def test_a_null_node_with_no_error_is_refused(self):
+        self.assertEqual(graphql_verdict(graphql_reply({"pullRequest": None}), self.PATH), "refused")
+
+    def test_any_other_error_type_is_inconclusive(self):
+        for kind in ("RATE_LIMITED", "MAX_NODE_LIMIT_EXCEEDED", "SERVICE_UNAVAILABLE", ""):
+            self.assertEqual(graphql_verdict(graphql_reply(None, [kind]), self.PATH), "inconclusive", kind)
+
+    def test_a_bad_status_or_empty_payload_is_inconclusive(self):
+        self.assertEqual(graphql_verdict(RawResponse(401, {}, None), self.PATH), "inconclusive")
+        self.assertEqual(graphql_verdict(RawResponse(200, {}, {}), self.PATH), "inconclusive")
+        self.assertEqual(graphql_verdict(RawResponse(0, {}, None), self.PATH), "inconclusive")
+
+
+class DirectFetchAuditTests(unittest.TestCase):
+    def test_everything_refused_is_a_pass_that_admits_it_could_not_confirm_the_ids(self):
+        lines, exposed, inconclusive = direct_fetch_audit(DirectFetchClient(), PRIVATE_IDS)
+        report = "\n".join(lines)
+        self.assertEqual((exposed, inconclusive), (0, 0))
+        self.assertIn("pull request: REFUSED", report)
+        self.assertIn("file: REFUSED", report)
+        self.assertIn("RESULT: every item was refused", report)
+        self.assertIn("no control token", report)
+
+    def test_a_readable_item_is_exposed(self):
+        lines, exposed, _ = direct_fetch_audit(READABLE, PRIVATE_IDS)
+        self.assertEqual(exposed, 4)
+        self.assertTrue(lines[-1].startswith("RESULT: EXPOSED"))
+
+    def test_one_route_answering_is_enough_to_be_exposed(self):
+        leaky = DirectFetchClient(rest=rest_reply(404), graphql=READABLE.graphql)
+        _, exposed, _ = direct_fetch_audit(leaky, PRIVATE_IDS)
+        self.assertEqual(exposed, 4)
+
+    def test_nothing_in_the_report_names_a_private_item(self):
+        for client in (DirectFetchClient(), READABLE, DirectFetchClient(rest=rest_reply(500))):
+            lines, _, _ = direct_fetch_audit(client, PRIVATE_IDS)
+            report = "\n".join(lines).lower()
+            for fragment in PRIVATE_FRAGMENTS:
+                self.assertNotIn(fragment, report)
+
+    def test_a_missing_id_is_inconclusive_never_a_pass(self):
+        values = {k: v for k, v in PRIVATE_IDS.items() if k != "GITHUB_PROBE_FILE"}
+        lines, exposed, inconclusive = direct_fetch_audit(DirectFetchClient(), values)
+        report = "\n".join(lines)
+        self.assertEqual((exposed, inconclusive), (0, 1))
+        self.assertIn("file: not configured (set GITHUB_PROBE_FILE)", report)
+        self.assertTrue(lines[-1].startswith("RESULT: inconclusive"))
+
+    def test_a_malformed_id_is_inconclusive_and_not_echoed(self):
+        values = {**PRIVATE_IDS, "GITHUB_PROBE_COMMIT": "alice/acme-secret-repo@short"}
+        lines, _, inconclusive = direct_fetch_audit(DirectFetchClient(), values)
+        report = "\n".join(lines)
+        self.assertEqual(inconclusive, 1)
+        self.assertIn("commit: not usable", report)
+        self.assertNotIn("acme", report)
+
+    def test_a_failing_token_is_inconclusive_not_clean(self):
+        dead = DirectFetchClient(rest=rest_reply(401), graphql=RawResponse(401, {}, None))
+        _, exposed, inconclusive = direct_fetch_audit(dead, PRIVATE_IDS)
+        self.assertEqual((exposed, inconclusive), (0, 4))
+
+    def test_a_control_token_that_can_read_the_items_confirms_the_refusals(self):
+        lines, exposed, inconclusive = direct_fetch_audit(DirectFetchClient(), PRIVATE_IDS, control=READABLE)
+        report = "\n".join(lines)
+        self.assertEqual((exposed, inconclusive), (0, 0))
+        self.assertIn("control token can read it", report)
+        self.assertIn("control token confirmed each one exists", lines[-1])
+
+    def test_a_control_token_that_cannot_read_an_item_means_the_id_may_be_wrong(self):
+        # A mistyped id is also a 404, so without this a typo would look like a pass.
+        lines, exposed, inconclusive = direct_fetch_audit(DirectFetchClient(), PRIVATE_IDS, control=DirectFetchClient())
+        self.assertEqual((exposed, inconclusive), (0, 4))
+        self.assertIn("control token could not read it", "\n".join(lines))
+
+    def test_exposure_still_wins_when_the_control_cannot_read_the_item(self):
+        _, exposed, _ = direct_fetch_audit(READABLE, PRIVATE_IDS, control=DirectFetchClient())
+        self.assertEqual(exposed, 4)
+
+    def test_one_item_failing_unexpectedly_does_not_hide_the_others(self):
+        class Flaky(DirectFetchClient):
+            def fetch_rest(self, path):
+                if "/pulls/" in path:
+                    raise ValueError("boom")
+                return super().fetch_rest(path)
+
+        lines, _, inconclusive = direct_fetch_audit(Flaky(), PRIVATE_IDS)
+        report = "\n".join(lines)
+        self.assertEqual(inconclusive, 1)
+        self.assertIn("pull request: not available (unexpected response shape: ValueError)", report)
+        self.assertIn("issue: REFUSED", report)
 
 
 if __name__ == "__main__":
