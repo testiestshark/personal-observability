@@ -303,7 +303,7 @@ describe("garminActivitySections", () => {
       expect(rowsOf(fullRun, "Pace and speed")).toEqual([["Best pace", "4:10 /km"]]);
     });
 
-    it("gives a ride avg and max speed in km/h instead of a pace", () => {
+    it("gives a non-foot activity avg and max speed in km/h instead of a pace", () => {
       const ride = { ...fullRun, type: "cycling", averageSpeedMps: 5, maximumSpeedMps: 12.5 };
       expect(rowsOf(ride, "Pace and speed")).toEqual([
         ["Avg speed", "18.0 km/h"],
@@ -342,6 +342,15 @@ describe("garminActivitySections", () => {
     it("is absent when both are null", () => {
       const none = { ...fullRun, averageCadenceSpm: null, maximumCadenceSpm: null };
       expect(sectionTitles(none)).not.toContain("Running form");
+    });
+
+    it("reads a bike's cadence in rpm under its own title, not as running form", () => {
+      const ride = { ...fullRun, type: "cycling", averageCadenceSpm: 88, maximumCadenceSpm: 112 };
+      expect(sectionTitles(ride)).not.toContain("Running form");
+      expect(rowsOf(ride, "Cadence")).toEqual([
+        ["Avg cadence", "88 rpm"],
+        ["Max cadence", "112 rpm"],
+      ]);
     });
   });
 
@@ -466,12 +475,8 @@ describe("garminActivitySections", () => {
     });
   });
 
-  it("never renders a null as 0 anywhere", () => {
-    const values = garminActivitySections(run).flatMap((s) => s.rows.map((row) => row.value));
-    expect(values).not.toContain("0");
-    expect(values.every((value) => value !== "0 m" && value !== "0 bpm" && value !== "0 W")).toBe(
-      true,
-    );
+  it("renders nothing at all for a run whose metrics are all null, rather than zeros", () => {
+    expect(garminActivitySections({ ...run, caloriesKcal: null })).toEqual([]);
   });
 
   it("has no section without rows", () => {

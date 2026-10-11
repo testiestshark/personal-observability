@@ -64,9 +64,10 @@ export function formatAverageSpeed(
   return `${kmPerHour.toFixed(1)} km/h`;
 }
 
-export type GarminHeadlineTile = { label: string; value: string };
-
+/** One labelled value: a headline tile, or a line in a section. */
 export type GarminRow = { label: string; value: string };
+
+export type GarminHeadlineTile = GarminRow;
 
 /** A titled block of metrics below the headline grid; never empty. */
 export type GarminSection = { title: string; rows: GarminRow[] };
@@ -76,7 +77,7 @@ export type GarminSection = { title: string; rows: GarminRow[] };
  * shown only when they differ from it by more than this: a few seconds of
  * stop-start noise is not information.
  */
-export const SECONDARY_TIME_THRESHOLD_SECONDS = 5;
+const SECONDARY_TIME_THRESHOLD_SECONDS = 5;
 
 /** A metric Garmin reported. Null is "not reported" and a true 0 is kept. */
 function isReported(value: number | null): value is number {
@@ -94,6 +95,11 @@ function metricRow(
 
 function wholeNumber(value: number): string {
   return Math.round(value).toLocaleString("en-GB");
+}
+
+/** A formatter for a whole number with a unit suffix: `inUnit("W")(245.4)` is "245 W". */
+function inUnit(unit: string): (value: number) => string {
+  return (value) => `${wholeNumber(value)} ${unit}`;
 }
 
 function oneDecimal(value: number): string {
@@ -172,27 +178,30 @@ function paceAndSpeedRows(activity: GarminActivityDetail): GarminRow[] {
  */
 export function garminActivitySections(activity: GarminActivityDetail): GarminSection[] {
   const benefit = humaniseTrainingEffectLabel(activity.trainingEffectLabel);
+  const isFoot = isFootActivity(activity.type);
+  const cadenceUnit = isFoot ? "spm" : "rpm";
   const sections: GarminSection[] = [
     {
       title: "Effort",
       rows: [
-        ...metricRow("Max HR", activity.maximumHeartRateBpm, (bpm) => formatHeartRate(bpm)),
-        ...metricRow("Calories", activity.caloriesKcal, (kcal) => formatCalories(kcal)),
+        ...metricRow("Max HR", activity.maximumHeartRateBpm, formatHeartRate),
+        ...metricRow("Calories", activity.caloriesKcal, formatCalories),
       ],
     },
     {
       title: "Elevation",
       rows: [
-        ...metricRow("Gain", activity.elevationGainMeters, (m) => `${wholeNumber(m)} m`),
-        ...metricRow("Loss", activity.elevationLossMeters, (m) => `${wholeNumber(m)} m`),
+        ...metricRow("Gain", activity.elevationGainMeters, inUnit("m")),
+        ...metricRow("Loss", activity.elevationLossMeters, inUnit("m")),
       ],
     },
     { title: "Pace and speed", rows: paceAndSpeedRows(activity) },
     {
-      title: "Running form",
+      // Steps per minute on foot, revolutions per minute on a bike.
+      title: isFoot ? "Running form" : "Cadence",
       rows: [
-        ...metricRow("Avg cadence", activity.averageCadenceSpm, (spm) => `${wholeNumber(spm)} spm`),
-        ...metricRow("Max cadence", activity.maximumCadenceSpm, (spm) => `${wholeNumber(spm)} spm`),
+        ...metricRow("Avg cadence", activity.averageCadenceSpm, inUnit(cadenceUnit)),
+        ...metricRow("Max cadence", activity.maximumCadenceSpm, inUnit(cadenceUnit)),
       ],
     },
     {
@@ -213,13 +222,9 @@ export function garminActivitySections(activity: GarminActivityDetail): GarminSe
     {
       title: "Power and training load",
       rows: [
-        ...metricRow("Avg power", activity.averagePowerWatts, (w) => `${wholeNumber(w)} W`),
-        ...metricRow("Max power", activity.maximumPowerWatts, (w) => `${wholeNumber(w)} W`),
-        ...metricRow(
-          "Normalized power",
-          activity.normalizedPowerWatts,
-          (w) => `${wholeNumber(w)} W`,
-        ),
+        ...metricRow("Avg power", activity.averagePowerWatts, inUnit("W")),
+        ...metricRow("Max power", activity.maximumPowerWatts, inUnit("W")),
+        ...metricRow("Normalized power", activity.normalizedPowerWatts, inUnit("W")),
         ...metricRow("Training load", activity.trainingLoad, wholeNumber),
       ],
     },
