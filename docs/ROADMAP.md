@@ -32,7 +32,8 @@ GitHub issues** — that is where to look when deciding what to do next.
 
 - GitHub activity (two accounts): decided and split into issues under #20; the token
   probe is done (#74), the schema is written (#75), the worker is written (#76) and
-  deploying it (#77) is next. Design and probe findings in
+  its image and runbook are written ([integrations/RAILWAY_GITHUB.md](integrations/RAILWAY_GITHUB.md));
+  deploying it (#77) waits on the owner. Design and probe findings in
   [integrations/GITHUB_MULTI_ACCOUNT.md](integrations/GITHUB_MULTI_ACCOUNT.md);
   [integrations/GITHUB.md](integrations/GITHUB.md) is superseded.
 

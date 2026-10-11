@@ -19,10 +19,11 @@ dist-ssr
 # Test coverage output (bun run test:coverage)
 coverage
 
-# Local Garmin/Hevy and Supabase session tokens used by the scheduled sync workers.
+# Local Garmin/Hevy/GitHub and Supabase session tokens used by the scheduled sync workers.
 # These are bearer credentials and must never be committed.
 .garmin-sync/
 .hevy-sync/
+.github-sync/
 
 # Environment variables (real credentials — use .env.example for the template)
 .env

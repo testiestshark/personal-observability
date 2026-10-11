@@ -7,7 +7,8 @@ second account's forged insert as the owner is refused by RLS. A second account'
 read, update and delete isolation is **not yet exercised on hosted** because the
 tables hold no rows; re-run it once the worker has written some. **The worker is
 built (#76, `scripts/github/github_sync.py`; see [§ The worker](#the-worker-76)).**
-Deployment (#77) and UI (#78) are not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+Deployment (#77, runbook in [RAILWAY_GITHUB.md](RAILWAY_GITHUB.md)) is not done and the UI (#78) is not
+built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
@@ -121,7 +122,9 @@ recorded here because this repository is public.
 `scripts/github/github_sync.py`, Python standard library only, shaped like the Garmin
 and Hevy workers (a single file, so each Docker image can copy just it). Tests are
 `scripts/github/test_github_sync.py` and run in the CI Python job.
-Deployment (Railway service, schedule, runbook) is #77; nothing here is deployed yet.
+Deployment (Railway service, schedule, runbook) is #77: the image and variable template are
+`scripts/github/Dockerfile` and `scripts/github/railway.env.example`, and the runbook is
+[RAILWAY_GITHUB.md](RAILWAY_GITHUB.md). It is not deployed until that runbook's steps are done.
 
 ```text
 python scripts/github/github_sync.py setup      # sign in to the app once, cache the session
