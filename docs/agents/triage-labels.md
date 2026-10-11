@@ -23,3 +23,19 @@ added when the first child issue is opened, not when the parent is created.
 
 Each child says `Follow-up to #<parent>` (or `Part of #<parent>`) at the top of its body,
 so the link is readable without opening the parent.
+
+## Paused issues
+
+There is also a `paused` label, for an issue that is **deliberately on hold until a stated
+date or event**: a check that needs a fresh run of something, work that waits on an
+external change. It is none of the triage roles. It is not waiting on a decision
+(`needs-triage`) or on the reporter (`needs-info`), and it is not ready to build
+(`ready-for-agent`), so an agent leaves it alone until what it waits for has happened.
+
+- Say what it waits for, and by when, in the title and at the top of the body: for
+  example "paused until 2026-10-15", directly under the `Follow-up to #<parent>` line.
+- Do not also apply `ready-for-agent`. When the date or event has passed, take `paused`
+  off and either do the work or close the issue.
+
+Example: the check that the scheduled Garmin sync stores splits for a brand-new run
+(#117), which can only be seen after the next real run.
