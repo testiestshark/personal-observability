@@ -188,6 +188,53 @@ export type Database = {
         };
         Relationships: [];
       };
+      fitness_activity_laps: {
+        Row: {
+          average_heart_rate_bpm: number | null;
+          created_at: string;
+          distance_meters: number | null;
+          duration_seconds: number;
+          elevation_gain_meters: number | null;
+          elevation_loss_meters: number | null;
+          fitness_activity_id: string;
+          id: string;
+          position: number;
+          user_id: string;
+        };
+        Insert: {
+          average_heart_rate_bpm?: number | null;
+          created_at?: string;
+          distance_meters?: number | null;
+          duration_seconds: number;
+          elevation_gain_meters?: number | null;
+          elevation_loss_meters?: number | null;
+          fitness_activity_id: string;
+          id?: string;
+          position: number;
+          user_id?: string;
+        };
+        Update: {
+          average_heart_rate_bpm?: number | null;
+          created_at?: string;
+          distance_meters?: number | null;
+          duration_seconds?: number;
+          elevation_gain_meters?: number | null;
+          elevation_loss_meters?: number | null;
+          fitness_activity_id?: string;
+          id?: string;
+          position?: number;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "fitness_activity_laps_fitness_activity_id_fkey";
+            columns: ["fitness_activity_id"];
+            isOneToOne: false;
+            referencedRelation: "fitness_activities";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       fitness_exercises: {
         Row: {
           created_at: string;
@@ -335,6 +382,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      replace_fitness_activity_laps: {
+        Args: { p_external_id: string; p_laps: Json; p_source: string };
+        Returns: number;
+      };
       replace_fitness_workout: { Args: { payload: Json }; Returns: string };
     };
     Enums: {

@@ -33,14 +33,19 @@ function rateInputs(
   return { durationSeconds, distanceMeters };
 }
 
-/** Seconds per km as "5:30 /km". */
-function formatPace(secondsPerKm: number): string {
+/** Seconds per km as "5:30". */
+function paceClock(secondsPerKm: number): string {
   // Round once, to whole seconds per km, then split: rounding minutes and
   // seconds separately would show 5:60.
   const rounded = Math.round(secondsPerKm);
   const minutes = Math.floor(rounded / 60);
   const seconds = String(rounded % 60).padStart(2, "0");
-  return `${minutes}:${seconds} /km`;
+  return `${minutes}:${seconds}`;
+}
+
+/** Seconds per km as "5:30 /km". */
+function formatPace(secondsPerKm: number): string {
+  return `${paceClock(secondsPerKm)} /km`;
 }
 
 /** Average pace as "5:30 /km": duration over distance. "—" when it cannot be worked out. */
@@ -230,6 +235,100 @@ export function garminActivitySections(activity: GarminActivityDetail): GarminSe
     },
   ];
   return sections.filter((section) => section.rows.length > 0);
+}
+
+/** One line of the splits table, every value already formatted; a gap reads "—". */
+export type SplitRow = {
+  /** The lap's place in the activity, from "1". */
+  label: string;
+  /** The lap's distance when it is shorter than the longest lap (the last, usually). */
+  distanceNote: string | null;
+  time: string;
+  /** Minutes and seconds per km, without the unit: the column heading carries it. */
+  pace: string;
+  /** Beats per minute, without the unit. */
+  heartRate: string;
+  /** Net change over the lap: "+3 m", "-8 m". */
+  elevation: string;
+  /** The pace bar's length from 0 to 1, longer for faster; null when there is no pace. */
+  barShare: number | null;
+};
+
+/** The shortest a pace bar is drawn, so the slowest lap still reads as a bar. */
+export const SPLIT_BAR_MIN_SHARE = 0.4;
+
+/** A lap shorter than this share of the longest is a partial one (the finish, say). */
+const PARTIAL_LAP_SHARE = 0.5;
+
+/** A lap this much shorter than the longest gets its distance noted. */
+const DISTANCE_NOTE_TOLERANCE = 0.05;
+
+/** Net elevation over a lap as "+3 m" or "-8 m"; "—" unless gain and loss are both known. */
+function formatNetElevation(gain: number | null, loss: number | null): string {
+  if (!isReported(gain) || !isReported(loss)) return MISSING;
+  const net = Math.round(gain - loss);
+  return `${net > 0 ? "+" : ""}${net} m`;
+}
+
+/**
+ * The splits table for a run or walk, one row per lap, or an empty list when
+ * there is nothing worth a table: not a foot activity, no stored laps, or a
+ * single lap (which would only repeat the headline).
+ *
+ * Bars are scaled across the full laps only, from the slowest (the minimum
+ * share) to the fastest (full length). A partial lap is clamped into that range
+ * so a sprint to the line, or a few metres at the end, cannot flatten the rest.
+ */
+export function garminSplits(activity: GarminActivityDetail): SplitRow[] {
+  if (!isFootActivity(activity.type) || activity.laps.length < 2) return [];
+
+  const laps = [...activity.laps].sort((a, b) => a.position - b.position);
+  const distances = laps.map((lap) => lap.distanceMeters).filter(isReported);
+  const longest = distances.length > 0 ? Math.max(...distances) : null;
+
+  const measured = laps.map((lap) => {
+    const inputs = rateInputs(lap.durationSeconds, lap.distanceMeters);
+    return {
+      lap,
+      secondsPerKm: inputs ? inputs.durationSeconds / (inputs.distanceMeters / 1_000) : null,
+      isPartial:
+        longest !== null &&
+        isReported(lap.distanceMeters) &&
+        lap.distanceMeters < longest * PARTIAL_LAP_SHARE,
+    };
+  });
+
+  const fullLapPaces = measured
+    .filter((entry) => entry.secondsPerKm !== null && !entry.isPartial)
+    .map((entry) => entry.secondsPerKm as number);
+  const fastest = fullLapPaces.length > 0 ? Math.min(...fullLapPaces) : null;
+  const slowest = fullLapPaces.length > 0 ? Math.max(...fullLapPaces) : null;
+
+  function barShare(secondsPerKm: number | null): number | null {
+    if (secondsPerKm === null || fastest === null || slowest === null) return null;
+    if (slowest === fastest) return 1;
+    const faster = (slowest - secondsPerKm) / (slowest - fastest);
+    const share = SPLIT_BAR_MIN_SHARE + (1 - SPLIT_BAR_MIN_SHARE) * faster;
+    return Math.min(1, Math.max(SPLIT_BAR_MIN_SHARE, share));
+  }
+
+  return measured.map(({ lap, secondsPerKm }) => {
+    const isShort =
+      longest !== null &&
+      isReported(lap.distanceMeters) &&
+      lap.distanceMeters < longest * (1 - DISTANCE_NOTE_TOLERANCE);
+    return {
+      label: String(lap.position + 1),
+      distanceNote: isShort ? formatKilometres(lap.distanceMeters) : null,
+      time: formatClock(lap.durationSeconds),
+      pace: secondsPerKm === null ? MISSING : paceClock(secondsPerKm),
+      heartRate: isReported(lap.averageHeartRateBpm)
+        ? String(Math.round(lap.averageHeartRateBpm))
+        : MISSING,
+      elevation: formatNetElevation(lap.elevationGainMeters, lap.elevationLossMeters),
+      barShare: barShare(secondsPerKm),
+    };
+  });
 }
 
 export type GarminActivityHeader = {
