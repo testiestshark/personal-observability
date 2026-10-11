@@ -87,6 +87,15 @@ have no equivalent). It runs the probe with `--audit-exposure`, which also repor
 whether that token can read any repository, organisation, PR or issue _name_, as yes/no
 and counts, never the names. Its report is counts, booleans and timestamps only.
 
+**The direct-fetch audit** (`--audit-direct-fetch`, #103) answers what the exposure audit
+cannot: listings coming back empty is not the same as a direct request being refused. It
+asks B's token for one known private PR, issue, commit and file by exact ID, over REST
+and GraphQL, selecting opaque IDs only. Each item is `refused`, `exposed` or
+`inconclusive`; a rate limit, a failed token or a missing ID is never a pass. The IDs come
+from `GITHUB_PROBE_*` in `.env.local` (they name a private repository, so never in git or
+an issue). An optional `GITHUB_PROBE_CONTROL_TOKEN` that can read the items confirms they
+exist, because a mistyped ID is also a 404.
+
 **Probe findings (2026-10-10, #74).** Counts and booleans only; B's totals are not
 recorded here because this repository is public.
 
