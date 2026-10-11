@@ -9,8 +9,9 @@ from garmin_sync import (
     app_environment,
     current_london_day,
     docker_host_url,
-    embedded_count,
+    has_embedded_rows,
     is_foot_activity,
+    is_garmin_activity_id,
     normalize_activities,
     normalize_daily_health,
     normalize_laps,
@@ -375,31 +376,40 @@ class NormalizeLapsTests(unittest.TestCase):
 class ActivitiesNeedingSplitsTests(unittest.TestCase):
     def test_selects_foot_activities_that_have_no_stored_laps(self) -> None:
         rows = [
-            {"external_id": "1", "activity_type": "running", "laps": 0},
-            {"external_id": "2", "activity_type": "running", "laps": 5},
-            {"external_id": "3", "activity_type": "cycling", "laps": 0},
-            {"external_id": "4", "activity_type": "trail_running", "laps": 0},
+            {"external_id": "1", "activity_type": "running", "has_laps": False},
+            {"external_id": "2", "activity_type": "running", "has_laps": True},
+            {"external_id": "3", "activity_type": "cycling", "has_laps": False},
+            {"external_id": "4", "activity_type": "trail_running", "has_laps": False},
         ]
 
         self.assertEqual(activities_needing_splits(rows), ["1", "4"])
 
     def test_ignores_an_id_garmin_cannot_look_up(self) -> None:
         rows = [
-            {"external_id": "abc", "activity_type": "running", "laps": 0},
-            {"external_id": "12 3", "activity_type": "running", "laps": 0},
+            {"external_id": "abc", "activity_type": "running", "has_laps": False},
+            {"external_id": "12 3", "activity_type": "running", "has_laps": False},
         ]
 
         self.assertEqual(activities_needing_splits(rows), [])
 
 
-class EmbeddedCountTests(unittest.TestCase):
-    def test_reads_the_count_postgrest_embeds(self) -> None:
-        self.assertEqual(embedded_count([{"count": 7}]), 7)
-        self.assertEqual(embedded_count([{"count": 0}]), 0)
+class IsGarminActivityIdTests(unittest.TestCase):
+    def test_accepts_plain_ascii_numbers(self) -> None:
+        self.assertTrue(is_garmin_activity_id("12345678901"))
 
-    def test_treats_anything_unexpected_as_no_laps(self) -> None:
-        for value in (None, [], {}, "3", [{"count": "x"}], [{"count": True}]):
-            self.assertEqual(embedded_count(value), 0, value)
+    def test_rejects_anything_garmin_could_not_look_up_or_that_would_alter_a_query(self) -> None:
+        # "²" and Arabic-Indic digits are str.isdigit() but not integers Garmin accepts.
+        for value in ("", "abc", "12 3", "1,2", "1)", "²", "١٢", "-5", None, 12):
+            self.assertFalse(is_garmin_activity_id(value), repr(value))
+
+
+class HasEmbeddedRowsTests(unittest.TestCase):
+    def test_is_true_when_postgrest_embedded_a_row(self) -> None:
+        self.assertTrue(has_embedded_rows([{"id": "abc"}]))
+
+    def test_treats_nothing_or_anything_unexpected_as_no_laps(self) -> None:
+        for value in (None, [], {}, "3", {"id": "abc"}):
+            self.assertFalse(has_embedded_rows(value), repr(value))
 
 
 class _FakeGarmin:
@@ -450,6 +460,70 @@ class StoreSplitsTests(unittest.TestCase):
         self.assertEqual(sorted(supabase.stored), ["1", "3"])
         self.assertEqual(len(supabase.stored["3"]), 2)
         self.assertEqual((result.stored, result.failed), (2, 2))
+
+    def test_stops_after_repeated_failures_in_a_row_instead_of_hammering_garmin(self) -> None:
+        # Seven activities, all failing: the likeliest cause is a rate limit, and
+        # more requests would only make it worse.
+        garmin = _FakeGarmin({str(n): RuntimeError("429") for n in range(7)})
+
+        with patch("sys.stderr"):
+            result = store_splits(
+                garmin,
+                _FakeSupabase(),
+                {},
+                [str(n) for n in range(7)],
+                pause_seconds=0,
+                max_consecutive_failures=3,
+            )
+
+        self.assertEqual(garmin.requested, ["0", "1", "2"])
+        self.assertEqual((result.stored, result.failed, result.stopped_early), (0, 3, True))
+
+    def test_a_success_between_failures_resets_the_streak(self) -> None:
+        garmin = _FakeGarmin(
+            {
+                "0": RuntimeError("x"),
+                "1": RuntimeError("x"),
+                "2": {"lapDTOs": [_lap()]},
+                "3": RuntimeError("x"),
+                "4": RuntimeError("x"),
+            }
+        )
+
+        with patch("sys.stderr"):
+            result = store_splits(
+                garmin,
+                _FakeSupabase(),
+                {},
+                ["0", "1", "2", "3", "4"],
+                pause_seconds=0,
+                max_consecutive_failures=3,
+            )
+
+        self.assertEqual(len(garmin.requested), 5)
+        self.assertFalse(result.stopped_early)
+
+    def test_a_limit_counts_activities_stored_so_empty_ones_do_not_use_it_up(self) -> None:
+        # Activities Garmin reports no laps for would otherwise sit at the top of a
+        # newest-first list and starve older runs on every limited backfill.
+        garmin = _FakeGarmin(
+            {
+                "0": {"lapDTOs": []},
+                "1": {"lapDTOs": [_lap()]},
+                "2": {"lapDTOs": []},
+                "3": {"lapDTOs": [_lap()]},
+                "4": {"lapDTOs": [_lap()]},
+            }
+        )
+        supabase = _FakeSupabase()
+
+        result = store_splits(
+            garmin, supabase, {}, ["0", "1", "2", "3", "4"], pause_seconds=0, max_stored=2
+        )
+
+        self.assertEqual(garmin.requested, ["0", "1", "2", "3"])
+        self.assertEqual(sorted(supabase.stored), ["1", "3"])
+        self.assertEqual(result.stored, 2)
 
     def test_an_empty_list_asks_garmin_for_nothing(self) -> None:
         garmin = _FakeGarmin({})

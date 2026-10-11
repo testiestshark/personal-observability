@@ -128,7 +128,8 @@ its activity).
 only for foot activities in its seven-day window that have **no laps stored yet**, so a new
 run costs one request once. A lookup that fails, or an activity with no laps, is a warning
 and is retried on the next run while the activity is still in the window; it never fails
-the sync. Requests are spaced one second apart.
+the sync. Requests are spaced one second apart, and five failures in a row stop the run:
+that is a rate limit or an outage, and more requests would only make it worse.
 
 **Backfill (one-off).** Runs from before this shipped have no laps. After the migration is
 applied, fetch them once, newest first:
@@ -136,11 +137,12 @@ applied, fetch them once, newest first:
 ```powershell
 bun run garmin:backfill-splits              # local Supabase
 bun run garmin:backfill-splits:live         # hosted Supabase
-bun run garmin:backfill-splits --limit 20   # at most 20, to try it or to stay under a rate limit
+bun run garmin:backfill-splits --limit 20   # store at most 20, to try it or to stay under a rate limit
 ```
 
 It is safe to repeat: activities that already have laps are skipped, so a run cut short is
-finished by running it again. An activity Garmin reports no laps for is retried each time.
+finished by running it again. `--limit` counts activities that got laps, so activities Garmin
+reports no laps for do not use it up; those are asked about again on each run.
 
 **Verification.** The table and its replace function follow the roles and ownership policy
 ([ARCHITECTURE.md](../ARCHITECTURE.md#roles-and-ownership-policy)). Run

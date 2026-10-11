@@ -245,7 +245,10 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
         .eq("fitness_activity_id", data.id)
         .order("position", { ascending: true });
 
-      if (lapsError) throw new Error(lapsError.message);
+      // Splits are an extra on the page, not the page: a laps query that fails
+      // (the table not deployed to this database yet, say) leaves the activity
+      // readable without them rather than turning it into an error page.
+      if (lapsError) console.error("Could not load laps for activity", data.id, lapsError.message);
 
       return {
         ...activity,

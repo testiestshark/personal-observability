@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatActivityTime, formatActivityType } from "./format";
+import { formatActivityTime, formatActivityType, formatKilometres } from "./format";
 import {
   formatAveragePace,
   formatAverageSpeed,
@@ -542,14 +542,14 @@ describe("garminSplits", () => {
     );
 
     expect(at(rows, 0)).toMatchObject({
-      label: "1",
+      lapNumber: "1",
       time: "5:30",
       pace: "5:30",
       heartRate: "148",
       elevation: "+3 m",
     });
     expect(at(rows, 1)).toMatchObject({
-      label: "2",
+      lapNumber: "2",
       time: "5:45",
       pace: "5:45",
       heartRate: "151",
@@ -568,7 +568,7 @@ describe("garminSplits", () => {
     const rows = garminSplits(
       withLaps([lap(2, { durationSeconds: 360 }), lap(0), lap(1, { durationSeconds: 340 })]),
     );
-    expect(rows.map((row) => [row.label, row.time])).toEqual([
+    expect(rows.map((row) => [row.lapNumber, row.time])).toEqual([
       ["1", "5:30"],
       ["2", "5:40"],
       ["3", "6:00"],
@@ -602,14 +602,18 @@ describe("garminSplits", () => {
 
   it("notes the distance only of a lap shorter than the rest, such as the last", () => {
     const rows = garminSplits(withLaps([lap(0), lap(1), lap(2, { distanceMeters: 340 })]));
-    expect(rows.map((row) => row.distanceNote)).toEqual([null, null, "0.34 km"]);
+    expect(rows.map((row) => row.distanceNote)).toEqual([null, null, formatKilometres(340)]);
   });
 
   it("gives no pace to a lap under the minimum shown distance", () => {
     const rows = garminSplits(
       withLaps([lap(0), lap(1), lap(2, { distanceMeters: 60, durationSeconds: 20 })]),
     );
-    expect(at(rows, 2)).toMatchObject({ pace: "—", barShare: null, distanceNote: "0.06 km" });
+    expect(at(rows, 2)).toMatchObject({
+      pace: "—",
+      barShare: null,
+      distanceNote: formatKilometres(60),
+    });
   });
 
   describe("pace bars", () => {

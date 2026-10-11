@@ -6,7 +6,7 @@ import {
   formatKilometres,
   MIN_SHOWN_DISTANCE_METERS,
 } from "./format";
-import type { GarminActivityDetail } from "./health.functions";
+import type { GarminActivityDetail, GarminLap } from "./health.functions";
 import { formatWorkoutDuration } from "./workout";
 import { formatDayLabel } from "@/lib/weight/units";
 
@@ -16,7 +16,8 @@ const MISSING = "—";
  * Whether the activity is read as pace (min/km) rather than speed (km/h).
  * Garmin type keys vary ("running", "trail_running", "casual_walking"), so this
  * matches on the word rather than listing keys: a type not seen yet still lands
- * on the right side.
+ * on the right side. The worker keeps splits for the same activities with a copy
+ * of this rule (`is_foot_activity` in scripts/garmin/garmin_sync.py): change both.
  */
 export function isFootActivity(type: string): boolean {
   return /running|walking|hiking/.test(type);
@@ -240,7 +241,7 @@ export function garminActivitySections(activity: GarminActivityDetail): GarminSe
 /** One line of the splits table, every value already formatted; a gap reads "—". */
 export type SplitRow = {
   /** The lap's place in the activity, from "1". */
-  label: string;
+  lapNumber: string;
   /** The lap's distance when it is shorter than the longest lap (the last, usually). */
   distanceNote: string | null;
   time: string;
@@ -286,15 +287,19 @@ export function garminSplits(activity: GarminActivityDetail): SplitRow[] {
   const distances = laps.map((lap) => lap.distanceMeters).filter(isReported);
   const longest = distances.length > 0 ? Math.max(...distances) : null;
 
+  /** Whether a lap with a known distance is under `share` of the longest lap. */
+  function isShorterThanLongest(lap: GarminLap, share: number): boolean {
+    return (
+      longest !== null && isReported(lap.distanceMeters) && lap.distanceMeters < longest * share
+    );
+  }
+
   const measured = laps.map((lap) => {
     const inputs = rateInputs(lap.durationSeconds, lap.distanceMeters);
     return {
       lap,
       secondsPerKm: inputs ? inputs.durationSeconds / (inputs.distanceMeters / 1_000) : null,
-      isPartial:
-        longest !== null &&
-        isReported(lap.distanceMeters) &&
-        lap.distanceMeters < longest * PARTIAL_LAP_SHARE,
+      isPartial: isShorterThanLongest(lap, PARTIAL_LAP_SHARE),
     };
   });
 
@@ -313,12 +318,9 @@ export function garminSplits(activity: GarminActivityDetail): SplitRow[] {
   }
 
   return measured.map(({ lap, secondsPerKm }) => {
-    const isShort =
-      longest !== null &&
-      isReported(lap.distanceMeters) &&
-      lap.distanceMeters < longest * (1 - DISTANCE_NOTE_TOLERANCE);
+    const isShort = isShorterThanLongest(lap, 1 - DISTANCE_NOTE_TOLERANCE);
     return {
-      label: String(lap.position + 1),
+      lapNumber: String(lap.position + 1),
       distanceNote: isShort ? formatKilometres(lap.distanceMeters) : null,
       time: formatClock(lap.durationSeconds),
       pace: secondsPerKm === null ? MISSING : paceClock(secondsPerKm),

@@ -194,7 +194,7 @@ function SplitsSection({ rows }: { rows: SplitRow[] }) {
           <thead>
             <tr className="text-left text-[11px] font-normal text-muted-foreground">
               <th scope="col" className="w-10 py-2 font-normal">
-                Km
+                Lap
               </th>
               <th scope="col" className="w-14 py-2 font-normal">
                 Time
@@ -212,9 +212,9 @@ function SplitsSection({ rows }: { rows: SplitRow[] }) {
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((row) => (
-              <tr key={row.label}>
+              <tr key={row.lapNumber}>
                 <th scope="row" className="py-2.5 text-left align-top font-medium text-foreground">
-                  {row.label}
+                  {row.lapNumber}
                   {row.distanceNote && (
                     <span className="block text-[11px] font-normal text-muted-foreground">
                       {row.distanceNote}

@@ -35,6 +35,8 @@ LONDON = ZoneInfo("Europe/London")
 # Splits cost one Garmin request per activity, so requests are spaced out: a
 # backfill of a long history would otherwise be a burst against an undocumented API.
 SPLITS_PAUSE_SECONDS = 1.0
+# Failures this many in a row mean Garmin is rate-limiting or down: stop asking.
+MAX_CONSECUTIVE_SPLIT_FAILURES = 5
 ACTIVITIES_PAGE_SIZE = 500
 FOOT_ACTIVITY_PATTERN = re.compile(r"running|walking|hiking")
 
@@ -299,8 +301,10 @@ def normalize_activities(
 def is_foot_activity(activity_type: str) -> bool:
     """Whether an activity is read as pace, which is where splits are kept.
 
-    Mirrors isFootActivity in src/lib/health/garmin-activity.ts: Garmin's type
-    keys vary ("trail_running", "treadmill_running"), so it matches on the word.
+    A copy of isFootActivity in src/lib/health/garmin-activity.ts, which is
+    what decides how the app reads the activity: change both together. Garmin's
+    type keys vary ("trail_running", "treadmill_running"), so it matches on the
+    word.
     """
     return FOOT_ACTIVITY_PATTERN.search(activity_type) is not None
 
@@ -344,29 +348,31 @@ def normalize_laps(payload: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def embedded_count(value: Any) -> int:
-    """Read the `[{"count": n}]` PostgREST returns for an embedded count."""
-    if isinstance(value, list) and value and isinstance(value[0], dict):
-        count = value[0].get("count")
-        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
-            return count
-    return 0
+def has_embedded_rows(value: Any) -> bool:
+    """Whether PostgREST embedded at least one row of a child table."""
+    return isinstance(value, list) and len(value) > 0
+
+
+def is_garmin_activity_id(value: Any) -> bool:
+    """Whether a value is a plain number Garmin's lookup accepts.
+
+    ASCII only: str.isdigit() also accepts "\u00b2", which Garmin's integer
+    parse rejects. The id goes into a query string, so nothing else gets in.
+    """
+    return isinstance(value, str) and value.isascii() and value.isdecimal()
 
 
 def activities_needing_splits(rows: list[dict[str, Any]]) -> list[str]:
     """External ids of foot activities that have no stored laps yet.
 
-    Takes `{"external_id", "activity_type", "laps"}` rows. An id that is not a
-    plain number is skipped: Garmin's lookup needs an integer, and the id goes
-    into a query string.
+    Takes `{"external_id", "activity_type", "has_laps"}` rows.
     """
     return [
         row["external_id"]
         for row in rows
-        if isinstance(row.get("external_id"), str)
-        and row["external_id"].isdigit()
+        if is_garmin_activity_id(row.get("external_id"))
         and is_foot_activity(str(row.get("activity_type") or ""))
-        and row.get("laps") == 0
+        and row.get("has_laps") is False
     ]
 
 
@@ -376,6 +382,7 @@ class SplitsResult:
 
     stored: int = 0
     failed: int = 0
+    stopped_early: bool = False
 
 
 def store_splits(
@@ -384,6 +391,8 @@ def store_splits(
     session: dict[str, Any],
     external_ids: list[str],
     pause_seconds: float = SPLITS_PAUSE_SECONDS,
+    max_stored: int | None = None,
+    max_consecutive_failures: int = MAX_CONSECUTIVE_SPLIT_FAILURES,
 ) -> SplitsResult:
     """Fetch and store the laps of each activity, one failure at a time.
 
@@ -391,9 +400,17 @@ def store_splits(
     lookup or write is a warning for that activity, not a failed sync: it is
     retried on the next run while the activity is still in the window (or by a
     backfill). An activity Garmin reports no laps for is left alone.
+
+    `max_stored` stops once that many activities have laps, so activities with
+    none do not use up a limit. A run of `max_consecutive_failures` failures
+    stops the loop: that is a rate limit or an outage, and more requests only
+    make it worse.
     """
     result = SplitsResult()
+    consecutive_failures = 0
     for index, external_id in enumerate(external_ids):
+        if max_stored is not None and result.stored >= max_stored:
+            break
         if index and pause_seconds:
             time.sleep(pause_seconds)
         try:
@@ -401,12 +418,22 @@ def store_splits(
             if laps:
                 supabase.replace_laps(external_id, laps, session)
                 result.stored += 1
+            consecutive_failures = 0
         except Exception as error:  # Garmin's exception hierarchy changes between releases.
             result.failed += 1
+            consecutive_failures += 1
             print(
                 f"Warning: splits for Garmin activity {external_id} were unavailable: {error}",
                 file=sys.stderr,
             )
+            if consecutive_failures >= max_consecutive_failures:
+                result.stopped_early = True
+                print(
+                    f"Warning: {consecutive_failures} splits lookups failed in a row; "
+                    "stopping. The remaining activities are retried on the next run.",
+                    file=sys.stderr,
+                )
+                break
     return result
 
 
@@ -628,17 +655,18 @@ class SupabaseSession:
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
-    def activity_lap_counts(
+    def garmin_activities(
         self, session: dict[str, Any], external_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:
-        """Garmin activities with how many laps are stored for each, newest first.
+        """Garmin activities and whether laps are stored for each, newest first.
 
         Pass `external_ids` to look only at those; None reads them all, a page at
-        a time. Row Level Security limits this to the signed-in user's rows.
+        a time. Row Level Security limits this to the signed-in user's rows. One
+        embedded lap is enough to answer "has laps", and avoids PostgREST
+        aggregates, which a hosted project can have switched off.
         """
         if external_ids is not None:
-            # The ids go into a query string, so only plain numbers are let through.
-            external_ids = [value for value in external_ids if value.isdigit()]
+            external_ids = [value for value in external_ids if is_garmin_activity_id(value)]
             if not external_ids:
                 return []
         access_token = self._access_token(session)
@@ -646,7 +674,8 @@ class SupabaseSession:
         offset = 0
         while True:
             query = {
-                "select": "external_id,activity_type,fitness_activity_laps(count)",
+                "select": "external_id,activity_type,fitness_activity_laps(id)",
+                "fitness_activity_laps.limit": "1",
                 "source": "eq.garmin",
                 "order": "started_at.desc,id.asc",
                 "limit": str(ACTIVITIES_PAGE_SIZE),
@@ -665,7 +694,7 @@ class SupabaseSession:
                 {
                     "external_id": item.get("external_id"),
                     "activity_type": item.get("activity_type"),
-                    "laps": embedded_count(item.get("fitness_activity_laps")),
+                    "has_laps": has_embedded_rows(item.get("fitness_activity_laps")),
                 }
                 for item in page
                 if isinstance(item, dict)
@@ -850,8 +879,8 @@ def sync(days: int) -> None:
         row["external_id"] for row in activities if is_foot_activity(row["activity_type"])
     ]
     try:
-        pending = activities_needing_splits(supabase.activity_lap_counts(session, foot_ids))
-    except SyncError as error:
+        pending = activities_needing_splits(supabase.garmin_activities(session, foot_ids))
+    except Exception as error:  # a timeout or bad JSON must not fail a sync that has stored
         print(f"Warning: stored splits could not be checked: {error}", file=sys.stderr)
         pending = []
     if pending:
@@ -863,8 +892,9 @@ def backfill_splits(limit: int | None) -> None:
     """One-off: fetch splits for every stored foot activity that has none yet.
 
     Safe to repeat: activities that already have laps are skipped, so a run cut
-    short by --limit or a Garmin rate limit is continued by running it again.
-    Newest activities come first.
+    short by --limit, a rate limit or a failure is continued by running it
+    again. Newest activities come first. `--limit` counts activities that got
+    laps, not lookups, so activities Garmin has no laps for cannot use it up.
     """
     if limit is not None and limit < 1:
         raise SyncError("--limit must be at least 1.")
@@ -874,21 +904,19 @@ def backfill_splits(limit: int | None) -> None:
     garmin = Garmin()
     garmin.login(str(token_store))
 
-    pending = activities_needing_splits(supabase.activity_lap_counts(session))
-    total = len(pending)
-    if limit is not None:
-        pending = pending[:limit]
+    pending = activities_needing_splits(supabase.garmin_activities(session))
     if not pending:
         print("No stored Garmin foot activities are missing splits.")
         return
 
-    print(f"Fetching splits for {len(pending)} of {total} activity/activities missing them.")
-    splits = store_splits(garmin, supabase, session, pending)
-    remaining = total - splits.stored
+    print(f"Fetching splits for {len(pending)} activity/activities missing them.")
+    splits = store_splits(garmin, supabase, session, pending, max_stored=limit)
     print(
         f"Stored splits for {splits.stored} activity/activities "
-        f"({splits.failed} failed). {remaining} still without splits."
+        f"({splits.failed} failed). {len(pending) - splits.stored} still without splits."
     )
+    if splits.stopped_early:
+        print("Stopped early after repeated failures; run it again later to continue.")
 
 
 def status() -> None:
@@ -927,7 +955,7 @@ def main() -> int:
         help="Fetch splits for stored runs and walks that have none (one-off, repeatable).",
     )
     backfill_parser.add_argument(
-        "--limit", type=int, default=None, help="Fetch at most this many, newest first."
+        "--limit", type=int, default=None, help="Store splits for at most this many activities, newest first."
     )
     subcommands.add_parser("status", help="Check whether both cached sessions exist.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
