@@ -5,8 +5,9 @@ built (#75, migration `20261010120000_create_github_tables.sql`, applied to host
 2026-10-10).** On hosted: `anon` is refused with `42501` on all three tables, and a
 second account's forged insert as the owner is refused by RLS. A second account's
 read, update and delete isolation is **not yet exercised on hosted** because the
-tables hold no rows; re-run it once the worker has written some. The worker (#76),
-deployment (#77) and UI (#78) are not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+tables hold no rows; re-run it once the worker has written some. **The worker is
+built (#76, `scripts/github/github_sync.py`; see [§ The worker](#the-worker-76)).**
+Deployment (#77) and UI (#78) are not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
@@ -105,6 +106,100 @@ recorded here because this repository is public.
   addresses. It can read the authenticated profile's private _counts_ (`GET /user`).
 - B's "Private contributions" profile setting is on (an unsplit count only exists when it
   is). Behaviour with it off was not tested and is not needed.
+
+## The worker (#76)
+
+`scripts/github/github_sync.py`, Python standard library only, shaped like the Garmin
+and Hevy workers (a single file, so each Docker image can copy just it). Tests are
+`scripts/github/test_github_sync.py` and run in the CI Python job.
+Deployment (Railway service, schedule, runbook) is #77; nothing here is deployed yet.
+
+```text
+python scripts/github/github_sync.py setup      # sign in to the app once, cache the session
+python scripts/github/github_sync.py sync       # refetch the trailing 14 UTC dates
+python scripts/github/github_sync.py backfill   # every UTC date since 2026-01-01, resumable
+python scripts/github/github_sync.py test       # the unit tests
+```
+
+**Configuration** (environment; names only here, values are Railway variables):
+
+| Variable                                             | Meaning                                                                                         |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GITHUB_TOKEN_A`, `GITHUB_TOKEN_B`                   | One token per account. A configured account needs its login too, and the other way round.       |
+| `GITHUB_LOGIN_A`, `GITHUB_LOGIN_B`                   | The login that token must belong to. A mismatch refuses the run before anything is written.     |
+| `GITHUB_LABEL_A`, `GITHUB_LABEL_B`                   | Owner-chosen label. Defaults to `Account A` / `Account B`.                                      |
+| `GITHUB_DETAIL_A`, `GITHUB_DETAIL_B`                 | `full` or `counts_only`. **Defaults to `counts_only`**, so a forgotten setting stores no names. |
+| `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`           | As the other workers.                                                                           |
+| `PERSONAL_OBSERVABILITY_APP_EMAIL` / `_APP_PASSWORD` | The app login, as Garmin and Hevy use it. Set both or neither.                                  |
+| `SUPABASE_SESSION_FILE`, `GITHUB_SYNC_IN_DOCKER`     | Cached session path (on the Railway volume) and the local-Docker URL rewrite.                   |
+
+Slot `A` sorts first (`display_order` 0), `B` second. Detail comes from configuration on
+every run and is written onto the account row, so the row always matches what the worker
+is doing.
+
+**What a run does, per account**
+
+1. Asks GitHub `viewer { id login databaseId }`. The login must equal `GITHUB_LOGIN_x`,
+   and the stored row for that login (created on the first run) must have the same
+   `databaseId`. Otherwise it stops before any read or write. If no row has that login
+   but one has the token's `databaseId`, the account was renamed on GitHub and the row
+   takes the new login.
+2. For each **GitHub day** (a UTC date), one `contributionsCollection(from, to)` call,
+   `00:00:00Z` to `23:59:59Z`, writing all five kinds (zeros included, so a quiet day is
+   not mistaken for an unsynced one). Each date is written as it is read.
+3. `full` accounts only: reads default-branch `history` for the author, most recently
+   pushed repositories first, stopping at the first repository last pushed before the
+   window, and stores headlines against the GitHub day of `authoredDate`, which is the
+   date the daily count uses. It only adds and updates: see the gaps below.
+4. `counts_only` accounts: deletes any commits stored while the account was `full`. The
+   insert policy stops new rows but cannot remove old ones.
+5. Stamps `github_accounts.last_synced_at`, and `token_expires_at` from the expiry
+   header when GitHub sends one.
+
+**Choices made while building it**
+
+- **"Trailing 14 UTC dates"** is today and the 13 before it.
+- **Heartbeat is `last_synced_at` on the account**, not a `sync_runs` row: that table's
+  `source` is restricted to `hevy`, and the account row already carries a per-account
+  time, which is what the UI needs. It is only stamped after that account's run finished.
+- **`unsplit` above zero on a `counts_only` account stops that account** ("token lost
+  its scope", naming no login) and writes nothing for that date or later, so a lump can
+  never overwrite real typed counts. On a `full` account it is stored and reported in
+  the run log as a count of dates, because it means the token cannot see into some
+  repositories, which is an undercount to surface, not a fault.
+- **One account failing does not stop the other**, but the process still exits non-zero.
+- **Rate limit:** the client stops when GitHub reports fewer than 25 points left, or on a
+  secondary-limit response, and the run fails with what was written kept. A backfill
+  rerun skips stored dates, so it resumes where it stopped. The trailing dates are
+  always refetched.
+- **Stored dates are found by their `commit` row**, since all five kinds of a date are
+  written in one request.
+
+**Privacy contract (tested, and enforced when sending).** `queries_for("counts_only")`
+is the only set of GraphQL documents a counts-only account may run. Two things hold it:
+the contract test lists every field those documents select and fails on anything
+outside an approved list (identity and the five counts), so adding a repository,
+message, URL or author field fails CI and has to be argued for; and at run time the
+account's client is wrapped so a document outside its set is refused before it is sent.
+Logs name accounts by slot letter and carry counts and timings only. An unexpected
+exception is reported by its type, never its message; the token is scrubbed from
+anything the GitHub client raises; a Supabase error is reported by its `message` alone,
+because the `details` field quotes the offending row; and an account's `repr` omits its
+token, login and label.
+
+**Known gaps, accepted:**
+
+- Commits to repositories the token does not own are not read (`ownerAffiliations` is
+  `OWNER`, matching A's fine-grained token, which cannot reach others).
+- A commit co-authored by both accounts counts twice, as decided.
+- The commit list only grows. A commit GitHub stops reporting (a force-push, a deleted
+  branch's squash) stays in `github_commits`, while the daily counts follow GitHub. The
+  spec says "upsert", and deleting on a read that might be incomplete would lose rows a
+  later, shorter window could not bring back. Pruning would need its own decision.
+- The GitHub client does not retry a dropped connection (Supabase calls do). The account
+  fails that run, and the next hourly run or a backfill rerun picks up.
+- A **sign-in on every run** happens only when the app login variables are set; without
+  them the worker refreshes the cached session, as Garmin and Hevy do.
 
 ---
 
