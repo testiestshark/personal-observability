@@ -2,6 +2,7 @@
 .github
 .garmin-sync
 .hevy-sync
+.github-sync
 .env
 .env.*
 node_modules

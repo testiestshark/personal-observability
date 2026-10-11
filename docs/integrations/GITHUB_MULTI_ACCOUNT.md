@@ -112,7 +112,9 @@ recorded here because this repository is public.
 `scripts/github/github_sync.py`, Python standard library only, shaped like the Garmin
 and Hevy workers (a single file, so each Docker image can copy just it). Tests are
 `scripts/github/test_github_sync.py` and run in the CI Python job.
-Deployment (Railway service, schedule, runbook) is #77; nothing here is deployed yet.
+Deployment (Railway service, schedule, runbook) is #77: the image and variable template are
+`scripts/github/Dockerfile` and `scripts/github/railway.env.example`, and the runbook is
+[RAILWAY_GITHUB.md](RAILWAY_GITHUB.md). It is not deployed until that runbook's steps are done.
 
 ```text
 python scripts/github/github_sync.py setup      # sign in to the app once, cache the session

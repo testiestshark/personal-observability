@@ -1,0 +1,22 @@
+services:
+  github-sync:
+    build:
+      context: .
+      dockerfile: scripts/github/Dockerfile
+    environment:
+      SUPABASE_SESSION_FILE: /data/supabase-session.json
+      GITHUB_SYNC_IN_DOCKER: "true"
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      GITHUB_LOGIN_A: ${GITHUB_LOGIN_A:-}
+      GITHUB_TOKEN_A: ${GITHUB_TOKEN_A:-}
+      GITHUB_LABEL_A: ${GITHUB_LABEL_A:-}
+      GITHUB_DETAIL_A: ${GITHUB_DETAIL_A:-}
+      GITHUB_LOGIN_B: ${GITHUB_LOGIN_B:-}
+      GITHUB_TOKEN_B: ${GITHUB_TOKEN_B:-}
+      GITHUB_LABEL_B: ${GITHUB_LABEL_B:-}
+      GITHUB_DETAIL_B: ${GITHUB_DETAIL_B:-}
+    volumes:
+      - ./.github-sync:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
