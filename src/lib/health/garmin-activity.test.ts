@@ -5,10 +5,14 @@ import {
   formatAveragePace,
   formatAverageSpeed,
   garminActivityHeader,
+  garminActivitySections,
+  humaniseTrainingEffectLabel,
   isFootActivity,
+  type GarminSection,
 } from "./garmin-activity";
 import type { GarminActivityDetail } from "./health.functions";
 
+/** A run with only the day-view fields; every secondary metric is null. */
 const run: GarminActivityDetail = {
   id: "0d6c4d0e-8a43-4f8e-9d0a-2f1a8c3f4b77",
   source: "garmin",
@@ -22,7 +26,54 @@ const run: GarminActivityDetail = {
   averageHeartRateBpm: 152,
   totalSets: null,
   totalReps: null,
+  movingDurationSeconds: null,
+  elapsedDurationSeconds: null,
+  maximumHeartRateBpm: null,
+  elevationGainMeters: null,
+  elevationLossMeters: null,
+  averageSpeedMps: null,
+  maximumSpeedMps: null,
+  averageCadenceSpm: null,
+  maximumCadenceSpm: null,
+  averagePowerWatts: null,
+  maximumPowerWatts: null,
+  normalizedPowerWatts: null,
+  aerobicTrainingEffect: null,
+  anaerobicTrainingEffect: null,
+  trainingLoad: null,
+  trainingEffectLabel: null,
 };
+
+/** A run with every secondary metric the worker stores today (power and load stay null). */
+const fullRun: GarminActivityDetail = {
+  ...run,
+  movingDurationSeconds: 1_740,
+  elapsedDurationSeconds: 1_860,
+  maximumHeartRateBpm: 178,
+  elevationGainMeters: 42.4,
+  elevationLossMeters: 40.1,
+  averageSpeedMps: 2.78,
+  maximumSpeedMps: 4,
+  averageCadenceSpm: 164.6,
+  maximumCadenceSpm: 181,
+  aerobicTrainingEffect: 3.24,
+  anaerobicTrainingEffect: 0.5,
+  trainingEffectLabel: "AEROBIC_BASE",
+};
+
+function sectionTitles(activity: GarminActivityDetail): string[] {
+  return garminActivitySections(activity).map((section) => section.title);
+}
+
+function section(activity: GarminActivityDetail, title: string): GarminSection {
+  const found = garminActivitySections(activity).find((candidate) => candidate.title === title);
+  if (!found) throw new Error(`No "${title}" section`);
+  return found;
+}
+
+function rowsOf(activity: GarminActivityDetail, title: string): [string, string][] {
+  return section(activity, title).rows.map((row) => [row.label, row.value]);
+}
 
 describe("isFootActivity", () => {
   it.each(["running", "trail_running", "treadmill_running", "walking", "hiking", "casual_walking"])(
@@ -164,5 +215,273 @@ describe("garminActivityHeader", () => {
   it("shows a dash for pace on a short foot activity", () => {
     const short = { ...run, distanceMeters: 60 };
     expect(garminActivityHeader(short).tiles[2]!.value).toBe("—");
+  });
+});
+
+describe("humaniseTrainingEffectLabel", () => {
+  it("turns Garmin's upper-case key into a sentence", () => {
+    expect(humaniseTrainingEffectLabel("AEROBIC_BASE")).toBe("Aerobic base");
+    expect(humaniseTrainingEffectLabel("TEMPO")).toBe("Tempo");
+    expect(humaniseTrainingEffectLabel("ANAEROBIC_CAPACITY")).toBe("Anaerobic capacity");
+  });
+
+  it("keeps a word with a digit in capitals, so VO2MAX is not read as Vo2max", () => {
+    expect(humaniseTrainingEffectLabel("VO2MAX")).toBe("VO2MAX");
+  });
+
+  it("is null for a missing or blank label", () => {
+    expect(humaniseTrainingEffectLabel(null)).toBeNull();
+    expect(humaniseTrainingEffectLabel("  ")).toBeNull();
+  });
+});
+
+describe("garminActivitySections", () => {
+  it("has no sections for a run with no secondary metrics, except the calories it does have", () => {
+    // `run` carries calories, which is part of Effort; everything else is null.
+    expect(sectionTitles(run)).toEqual(["Effort"]);
+    expect(sectionTitles({ ...run, caloriesKcal: null })).toEqual([]);
+  });
+
+  it("lists the sections that have data, in a fixed order", () => {
+    expect(sectionTitles(fullRun)).toEqual([
+      "Effort",
+      "Elevation",
+      "Pace and speed",
+      "Running form",
+      "Training effect",
+      "Time",
+    ]);
+  });
+
+  describe("Effort", () => {
+    it("shows max HR and calories", () => {
+      expect(rowsOf(fullRun, "Effort")).toEqual([
+        ["Max HR", "178 bpm"],
+        ["Calories", "340 kcal"],
+      ]);
+    });
+
+    it("drops the row that is null and keeps the other", () => {
+      expect(rowsOf({ ...fullRun, caloriesKcal: null }, "Effort")).toEqual([["Max HR", "178 bpm"]]);
+      expect(rowsOf({ ...fullRun, maximumHeartRateBpm: null }, "Effort")).toEqual([
+        ["Calories", "340 kcal"],
+      ]);
+    });
+  });
+
+  describe("Elevation", () => {
+    it("shows gain and loss in whole metres", () => {
+      expect(rowsOf(fullRun, "Elevation")).toEqual([
+        ["Gain", "42 m"],
+        ["Loss", "40 m"],
+      ]);
+    });
+
+    it("keeps a recorded zero as 0 m: a flat run is data, a null is not", () => {
+      const flat = { ...fullRun, elevationGainMeters: 0, elevationLossMeters: 0 };
+      expect(rowsOf(flat, "Elevation")).toEqual([
+        ["Gain", "0 m"],
+        ["Loss", "0 m"],
+      ]);
+    });
+
+    it("is absent when both are null", () => {
+      const none = { ...fullRun, elevationGainMeters: null, elevationLossMeters: null };
+      expect(sectionTitles(none)).not.toContain("Elevation");
+    });
+
+    it("shows the one that is present", () => {
+      expect(rowsOf({ ...fullRun, elevationLossMeters: null }, "Elevation")).toEqual([
+        ["Gain", "42 m"],
+      ]);
+    });
+  });
+
+  describe("Pace and speed", () => {
+    it("gives a foot activity its best pace, from max speed", () => {
+      // 4 m/s is 250 s per km.
+      expect(rowsOf(fullRun, "Pace and speed")).toEqual([["Best pace", "4:10 /km"]]);
+    });
+
+    it("gives a non-foot activity avg and max speed in km/h instead of a pace", () => {
+      const ride = { ...fullRun, type: "cycling", averageSpeedMps: 5, maximumSpeedMps: 12.5 };
+      expect(rowsOf(ride, "Pace and speed")).toEqual([
+        ["Avg speed", "18.0 km/h"],
+        ["Max speed", "45.0 km/h"],
+      ]);
+    });
+
+    it("does not show speeds for a foot activity or a pace for a ride", () => {
+      const labels = (activity: GarminActivityDetail) =>
+        rowsOf(activity, "Pace and speed").map(([label]) => label);
+      expect(labels(fullRun)).not.toContain("Avg speed");
+      expect(labels({ ...fullRun, type: "cycling" })).not.toContain("Best pace");
+    });
+
+    it("is absent when max speed is null, zero or not finite", () => {
+      for (const maximumSpeedMps of [null, 0, Number.NaN]) {
+        const bare = { ...fullRun, maximumSpeedMps };
+        expect(sectionTitles(bare)).not.toContain("Pace and speed");
+      }
+    });
+
+    it("shows the speed that is present when only one of avg and max is", () => {
+      const ride = { ...fullRun, type: "cycling", averageSpeedMps: null, maximumSpeedMps: 10 };
+      expect(rowsOf(ride, "Pace and speed")).toEqual([["Max speed", "36.0 km/h"]]);
+    });
+  });
+
+  describe("Running form", () => {
+    it("shows avg and max cadence in steps per minute", () => {
+      expect(rowsOf(fullRun, "Running form")).toEqual([
+        ["Avg cadence", "165 spm"],
+        ["Max cadence", "181 spm"],
+      ]);
+    });
+
+    it("is absent when both are null", () => {
+      const none = { ...fullRun, averageCadenceSpm: null, maximumCadenceSpm: null };
+      expect(sectionTitles(none)).not.toContain("Running form");
+    });
+
+    it("reads a bike's cadence in rpm under its own title, not as running form", () => {
+      const ride = { ...fullRun, type: "cycling", averageCadenceSpm: 88, maximumCadenceSpm: 112 };
+      expect(sectionTitles(ride)).not.toContain("Running form");
+      expect(rowsOf(ride, "Cadence")).toEqual([
+        ["Avg cadence", "88 rpm"],
+        ["Max cadence", "112 rpm"],
+      ]);
+    });
+  });
+
+  describe("Training effect", () => {
+    it("shows aerobic and anaerobic to one decimal, with the humanised label", () => {
+      expect(rowsOf(fullRun, "Training effect")).toEqual([
+        ["Aerobic", "3.2"],
+        ["Anaerobic", "0.5"],
+        ["Primary benefit", "Aerobic base"],
+      ]);
+    });
+
+    it("pads a whole value to one decimal", () => {
+      const whole = { ...fullRun, aerobicTrainingEffect: 4, anaerobicTrainingEffect: 0 };
+      expect(rowsOf(whole, "Training effect").slice(0, 2)).toEqual([
+        ["Aerobic", "4.0"],
+        ["Anaerobic", "0.0"],
+      ]);
+    });
+
+    it("shows the label alone when the values are null", () => {
+      const labelOnly = { ...fullRun, aerobicTrainingEffect: null, anaerobicTrainingEffect: null };
+      expect(rowsOf(labelOnly, "Training effect")).toEqual([["Primary benefit", "Aerobic base"]]);
+    });
+
+    it("is absent when the values and the label are all null", () => {
+      const none = {
+        ...fullRun,
+        aerobicTrainingEffect: null,
+        anaerobicTrainingEffect: null,
+        trainingEffectLabel: null,
+      };
+      expect(sectionTitles(none)).not.toContain("Training effect");
+    });
+  });
+
+  describe("Time", () => {
+    it("shows moving and elapsed time when they differ from the headline Time", () => {
+      expect(rowsOf(fullRun, "Time")).toEqual([
+        ["Moving", "29:00"],
+        ["Elapsed", "31:00"],
+      ]);
+    });
+
+    it("counts from an hour up as h:mm:ss", () => {
+      const long = {
+        ...fullRun,
+        durationSeconds: 3_900,
+        movingDurationSeconds: 3_725,
+        elapsedDurationSeconds: 4_000,
+      };
+      expect(rowsOf(long, "Time")).toEqual([
+        ["Moving", "1:02:05"],
+        ["Elapsed", "1:06:40"],
+      ]);
+    });
+
+    it("hides a line within a few seconds of the headline Time, and keeps one beyond", () => {
+      const close = { ...fullRun, movingDurationSeconds: 1_805, elapsedDurationSeconds: 1_806 };
+      // 5 s apart is not "more than a few seconds"; 6 s is.
+      expect(rowsOf(close, "Time")).toEqual([["Elapsed", "30:06"]]);
+    });
+
+    it("hides a line equal to the headline Time", () => {
+      const same = { ...fullRun, movingDurationSeconds: 1_800, elapsedDurationSeconds: 1_800 };
+      expect(sectionTitles(same)).not.toContain("Time");
+    });
+
+    it("measures the difference either way round", () => {
+      const shorter = { ...fullRun, movingDurationSeconds: 1_700, elapsedDurationSeconds: null };
+      expect(rowsOf(shorter, "Time")).toEqual([["Moving", "28:20"]]);
+    });
+
+    it("is absent when both are null", () => {
+      const none = { ...fullRun, movingDurationSeconds: null, elapsedDurationSeconds: null };
+      expect(sectionTitles(none)).not.toContain("Time");
+    });
+
+    it("shows them when the headline Time is itself missing, since there is nothing to repeat", () => {
+      const noHeadline = { ...fullRun, durationSeconds: null };
+      expect(rowsOf(noHeadline, "Time")).toEqual([
+        ["Moving", "29:00"],
+        ["Elapsed", "31:00"],
+      ]);
+    });
+  });
+
+  describe("Power and training load", () => {
+    const powered: GarminActivityDetail = {
+      ...fullRun,
+      averagePowerWatts: 245.4,
+      maximumPowerWatts: 410,
+      normalizedPowerWatts: 262,
+      trainingLoad: 87.6,
+    };
+
+    it("appears once the worker populates it", () => {
+      expect(rowsOf(powered, "Power and training load")).toEqual([
+        ["Avg power", "245 W"],
+        ["Max power", "410 W"],
+        ["Normalized power", "262 W"],
+        ["Training load", "88"],
+      ]);
+    });
+
+    it("is the last section", () => {
+      expect(sectionTitles(powered).at(-1)).toBe("Power and training load");
+    });
+
+    it("is absent for a run with none of it, as every real row is today", () => {
+      expect(sectionTitles(fullRun)).not.toContain("Power and training load");
+    });
+
+    it("shows training load alone when there is no power", () => {
+      const loadOnly = { ...fullRun, trainingLoad: 120 };
+      expect(rowsOf(loadOnly, "Power and training load")).toEqual([["Training load", "120"]]);
+    });
+
+    it("keeps a recorded zero rather than hiding it as if it were null", () => {
+      const zero = { ...fullRun, averagePowerWatts: 0 };
+      expect(rowsOf(zero, "Power and training load")).toEqual([["Avg power", "0 W"]]);
+    });
+  });
+
+  it("renders nothing at all for a run whose metrics are all null, rather than zeros", () => {
+    expect(garminActivitySections({ ...run, caloriesKcal: null })).toEqual([]);
+  });
+
+  it("has no section without rows", () => {
+    for (const activity of [run, fullRun]) {
+      for (const s of garminActivitySections(activity)) expect(s.rows.length).toBeGreaterThan(0);
+    }
   });
 });

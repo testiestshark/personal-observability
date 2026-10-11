@@ -2,7 +2,11 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 
 import { PageHeader } from "@/components/app-shell";
-import { garminActivityHeader } from "@/lib/health/garmin-activity";
+import {
+  garminActivityHeader,
+  garminActivitySections,
+  type GarminSection,
+} from "@/lib/health/garmin-activity";
 import {
   activityIdSchema,
   type FitnessActivityDetail,
@@ -153,6 +157,7 @@ function HevyWorkout({ activity }: { activity: HevyActivityDetail }) {
 
 function GarminActivity({ activity }: { activity: GarminActivityDetail }) {
   const header = garminActivityHeader(activity);
+  const sections = garminActivitySections(activity);
 
   return (
     <>
@@ -160,7 +165,32 @@ function GarminActivity({ activity }: { activity: GarminActivityDetail }) {
       <PageHeader eyebrow={`${header.dateLabel} · ${header.startTime}`} title={header.title} />
 
       <StatGrid label="Activity totals" tiles={header.tiles} />
+
+      {sections.map((section) => (
+        <MetricSection key={section.title} section={section} />
+      ))}
     </>
+  );
+}
+
+function MetricSection({ section }: { section: GarminSection }) {
+  const headingId = `section-${section.title.toLowerCase().replaceAll(" ", "-")}`;
+  return (
+    <section aria-labelledby={headingId} className="mt-6">
+      <h2 id={headingId} className="mb-3 font-display text-lg text-foreground">
+        {section.title}
+      </h2>
+      <dl className="divide-y divide-border rounded-2xl border border-border bg-card px-4 md:px-5">
+        {section.rows.map((row) => (
+          <div key={row.label} className="flex items-baseline justify-between gap-4 py-3">
+            <dt className="text-sm text-muted-foreground">{row.label}</dt>
+            <dd className="min-w-0 truncate text-sm font-medium tabular-nums text-foreground">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
