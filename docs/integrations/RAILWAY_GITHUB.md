@@ -33,15 +33,16 @@ page, and tick it there too:
 - [ ] GitHub account B
 - [ ] Railway, and the email address that can reset it
 
-#94 recorded both GitHub accounts as done on 2026-10-10; Railway was still open.
-Recheck rather than trust that, because a token minted behind a weak account is the
-whole risk this section exists to close.
+Recheck each rather than trusting an earlier tick: a token minted behind a weak
+account is the whole risk this section exists to close.
 
 ## 1. Create the tokens
 
 Create each token while signed in as the account it belongs to (a private window
 avoids picking the wrong one). GitHub shows a token exactly once, so paste it
-straight into Railway (step 2) and do not save it anywhere else.
+straight into Railway (step 2) and do not save it anywhere else. Railway keeps it
+readable until you seal it at the end of step 4, which is when you need it again for
+the backfill.
 
 **Account A: fine-grained, read-only.**
 
@@ -49,8 +50,11 @@ straight into Railway (step 2) and do not save it anywhere else.
 2. Name `po-github-sync-A`, expiration **90 days**, resource owner A.
 3. Repository access: the repositories whose commit headlines should be kept.
    Repositories left out are invisible to the commit list.
-4. Permissions: **Metadata: read** and nothing else. Anything else is more than the
-   worker uses.
+4. Permissions: **Metadata: read** and nothing else. That is the decided scope, and
+   the probe showed it is enough for the counts. It did not test the itemised commit
+   list, which for private repositories GitHub may only return with
+   **Contents: read**. Do not add it pre-emptively: step 3 says how to tell, and
+   adding it is the owner's decision.
 
 **Account B: classic, `read:user` only.** Deliberately classic: `read:user` is the one
 scope that makes GitHub split private-repository work by type, and fine-grained tokens
@@ -106,7 +110,9 @@ lump over real counts.
 
 4. **Tokens: `GITHUB_TOKEN_A` and `GITHUB_TOKEN_B` as sealed variables.** Railway does
    support this (verified against its Variables documentation, 2026-10-11). Paste each
-   token, then use the variable's three-dot menu -> Seal. What sealing means:
+   token as an ordinary variable for now and **seal it only at the end of step 4**
+   (three-dot menu -> Seal), once the first run and the backfill have worked. What
+   sealing means:
    - The value reaches builds and deployments and is never shown in the UI or
      returned by the API.
    - It is not provided to `railway run` or `railway variables`.
@@ -115,8 +121,9 @@ lump over real counts.
    - It is not copied when a service or environment is duplicated, so a duplicate
      starts without the tokens.
 
-   Because a sealed value cannot be read back, **check a token is right before
-   sealing it**: a typo means re-entering it, not fixing it. Rotation (below) is
+   Because a sealed value cannot be read back and the backfill needs the tokens on
+   this machine, sealing comes last: a typo found while still unsealed is a quick
+   fix, and after sealing it means re-entering the token. Rotation (below) is
    always a replacement, which sealing does not get in the way of.
 
 5. Attach a persistent volume named `github-data` at `/data`. The worker refuses to
@@ -165,12 +172,24 @@ group by a.label;
 `last_synced_at` should be within the hour for both accounts, and
 `token_expires_at` should be about 90 days out.
 
+Then check A's commit list, since that is the part the probe did not cover:
+
+```sql
+select count(*) as commits, max(local_day) as latest
+from github_commits;
+```
+
+If A has pushed to a private repository in the last two weeks and `commits` is zero
+or misses it, the token cannot read that history. Note it on #77 and ask the owner
+whether A's token gets **Contents: read**; do not widen it on your own.
+
 ## 4. Backfill the history
 
 The scheduled run only refetches the trailing 14 UTC dates. Load everything since
 2026-01-01 once, from this machine, against hosted. The tokens are not on this
-machine and cannot be read back from sealed variables, so paste them here at hidden
-prompts into the **current PowerShell session only**, not into `.env.local`:
+machine yet: copy each from the Railway Variables editor (still unsealed) and paste
+it at a hidden prompt into the **current PowerShell session only**, not into
+`.env.local`:
 
 ```powershell
 function Read-Secret($prompt) { [Net.NetworkCredential]::new('', (Read-Host $prompt -AsSecureString)).Password }
@@ -178,7 +197,9 @@ function Read-Secret($prompt) { [Net.NetworkCredential]::new('', (Read-Host $pro
 $env:SUPABASE_URL = "<VITE_SUPABASE_URL from .env.production>"
 $env:SUPABASE_PUBLISHABLE_KEY = "<VITE_SUPABASE_PUBLISHABLE_KEY from .env.production>"
 $env:GITHUB_LOGIN_A = "<account A login>"; $env:GITHUB_DETAIL_A = "full"
+$env:GITHUB_LABEL_A = "<the GITHUB_LABEL_A set in Railway>"
 $env:GITHUB_LOGIN_B = "<account B login>"; $env:GITHUB_DETAIL_B = "counts_only"
+$env:GITHUB_LABEL_B = "<the GITHUB_LABEL_B set in Railway>"
 $env:GITHUB_TOKEN_A = Read-Secret "Account A token"
 $env:GITHUB_TOKEN_B = Read-Secret "Account B token"
 
@@ -191,11 +212,16 @@ Remove-Item -Recurse -Force .github-sync   # the cached hosted session
 
 Do not pass `--env-file .env.local`: its Supabase values point at the local stack.
 Compose reads the variables above from the session, which is also why nothing is
-written to disk.
+written to disk. Set the labels to what Railway has: the worker writes the configured
+label onto the account row on every run, so an empty one would reset it to
+"Account A" until the next scheduled run.
 
 Backfill is idempotent and resumable. It skips dates already stored except the
 trailing 14, and GitHub's rate limit stops it with what was written kept: rerun after
-the limit resets and it carries on. Afterwards, `github_daily_contributions` should
+the limit resets and it carries on.
+
+**Now seal `GITHUB_TOKEN_A` and `GITHUB_TOKEN_B`** in Railway, and redeploy so the
+next run uses the sealed values. Afterwards, `github_daily_contributions` should
 hold five rows (one per kind) for every UTC date since 2026-01-01 for each account:
 
 ```sql
@@ -259,14 +285,15 @@ It still gets revoked at once:
    token that reached this public repository, an issue or a PR is an incident for the
    repository's security process, not for a public issue: see
    [CLAUDE.md](../../CLAUDE.md#public-repository).
-5. If the Railway account itself may be compromised rather than one token, rotate the
-   app password and the Hevy API key as well, and re-authenticate Garmin.
+5. If the Railway account itself may be compromised rather than one token, treat every
+   variable in the project as leaked, not just these two, and rotate them all.
 
 ## What a failed run looks like
 
-A failed run exits non-zero, leaves stored data as it was for the account that
-failed, and does not stamp that account's `last_synced_at`, so its data just goes
-stale. One account failing does not stop the other, but the run still exits non-zero.
+A failed run exits non-zero and does not stamp that account's `last_synced_at`, so
+its data just goes stale. Dates written before the failure are kept: each date is
+written as it is read, and nothing is rolled back. One account failing does not stop
+the other, but the run still exits non-zero.
 There is no alerting. Read the Railway log; each failure names the account by slot
 letter:
 
@@ -274,15 +301,21 @@ letter:
 - `belongs to a different GitHub login than GITHUB_LOGIN_x`: the token was pasted into
   the wrong slot, or belongs to the wrong account. Nothing was written.
 - `lost the read:user scope` (account B): remake B's token with `read:user` ticked.
-- `rate limit`: GitHub's limit was nearly spent. Whatever was written is kept and the
-  next hourly run resumes.
+- `rate limit`: GitHub's limit was nearly spent. Whatever was written is kept. The
+  next hourly run refetches the trailing 14 dates; only `backfill` resumes an older
+  gap.
 - `Railway requires a persistent volume`: the volume is missing or not at `/data`.
 - App sign-in errors: check the two `PERSONAL_OBSERVABILITY_APP_*` variables, and the
   reference to the Garmin service if you used one.
 - `No GitHub accounts are configured`: the token and login variables are missing from
   this service (a duplicated service does not copy sealed ones).
-- Anything else names an exception type only; rerun `sync` by hand (the compose
-  command above, with `sync`) and compare.
+- `GITHUB_LOGIN_x is set but GITHUB_TOKEN_x is empty`, or the reverse: half of a pair
+  is missing. The run refuses rather than silently skipping the account.
+- `is a different GitHub user than this token`: the stored row for that login belongs
+  to another GitHub user, so the token or login is pasted against the wrong account.
+  Nothing was written.
+- Anything else names an exception type only; rerun by hand (the step 4 block, with
+  `sync` in place of `backfill`) and compare.
 
 [issue]: https://github.com/testiestshark/personal-observability/issues/77
 [hardening]: https://github.com/testiestshark/personal-observability/issues/94

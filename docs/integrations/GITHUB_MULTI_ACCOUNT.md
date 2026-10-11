@@ -7,7 +7,8 @@ second account's forged insert as the owner is refused by RLS. A second account'
 read, update and delete isolation is **not yet exercised on hosted** because the
 tables hold no rows; re-run it once the worker has written some. **The worker is
 built (#76, `scripts/github/github_sync.py`; see [§ The worker](#the-worker-76)).**
-Deployment (#77) and UI (#78) are not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
+Deployment (#77, runbook in [RAILWAY_GITHUB.md](RAILWAY_GITHUB.md)) is not done and the UI (#78) is not
+built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
 "Connect GitHub") for reading data — read §0 for where this note agrees and departs
 from that plan.
 
