@@ -22,20 +22,24 @@ GitHub issues** — that is where to look when deciding what to do next.
   "Last synced" time on the Integrations page. Design in
   [integrations/HEVY.md](integrations/HEVY.md), runbook in
   [integrations/RAILWAY_HEVY.md](integrations/RAILWAY_HEVY.md).
+- GitHub contributions across two accounts, operational on Railway since 2026-10-11:
+  an hourly cron worker for per-day contribution counts (and one account's commit
+  headlines), backfilled from 2026-01-01. Not yet shown in the app (#78). Design and
+  probe findings in
+  [integrations/GITHUB_MULTI_ACCOUNT.md](integrations/GITHUB_MULTI_ACCOUNT.md), runbook
+  in [integrations/RAILWAY_GITHUB.md](integrations/RAILWAY_GITHUB.md);
+  [integrations/GITHUB.md](integrations/GITHUB.md) is superseded.
 
 ## Parked
 
 - Nothing currently parked. The GitHub "Connect GitHub" milestone was superseded on
-  2026-10-10; see below.
+  2026-10-10; see above.
 
 ## Next
 
-- GitHub activity (two accounts): decided and split into issues under #20; the token
-  probe is done (#74), the schema is written (#75), the worker is written (#76) and
-  its image and runbook are written ([integrations/RAILWAY_GITHUB.md](integrations/RAILWAY_GITHUB.md));
-  deploying it (#77) waits on the owner. Design and probe findings in
-  [integrations/GITHUB_MULTI_ACCOUNT.md](integrations/GITHUB_MULTI_ACCOUNT.md);
-  [integrations/GITHUB.md](integrations/GITHUB.md) is superseded.
+- GitHub activity in the app (#78): the "Making" section on Today and per-account
+  status, last sync and token-expiry warning on Integrations, from the data the worker
+  now stores.
 
 ## Later (unordered, one per data domain in [PRODUCT.md](PRODUCT.md))
 
