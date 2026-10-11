@@ -4,9 +4,10 @@ Status: **decided 2026-10-10 (#20); token probe done (#74, findings below); sche
 built (#75, migration `20261010120000_create_github_tables.sql`, applied to hosted on
 2026-10-10).** On hosted: `anon` is refused with `42501` on all three tables, and a
 second account's forged insert as the owner is refused by RLS. A second account's
-read, update and delete isolation is **not yet exercised on hosted**. The tables
-now hold rows (the worker has been live since 2026-10-11), so it can be, and it
-needs a temporary second account because signup is closed. **The worker is
+read, update and delete isolation was exercised on hosted on 2026-10-11 (between
+13:19 and 13:34 UTC, all 10 tables, no failures; recorded on #103), after the worker
+had written rows, so it was not vacuous. It is a snapshot: re-run it after any
+change to a table or a policy. **The worker is
 built (#76, `scripts/github/github_sync.py`; see [§ The worker](#the-worker-76)).**
 The worker has been operational on Railway since 2026-10-11 (#77, runbook in
 [RAILWAY_GITHUB.md](RAILWAY_GITHUB.md)); the UI (#78) is not built yet. Research written 2026-09-23. Supersedes [GITHUB.md](GITHUB.md) (Milestone 1,
