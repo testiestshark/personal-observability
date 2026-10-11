@@ -72,11 +72,30 @@ export type HevyActivityDetail = FitnessActivity & {
 
 /**
  * A Garmin activity for its detail page. It has no exercises: the lookup does
- * not fetch them, and the headline numbers are all day-view fields.
+ * not fetch them. Beyond the day-view fields it carries the secondary metrics
+ * the worker stores; each is null when Garmin did not report it, which is not
+ * the same as 0.
  */
 export type GarminActivityDetail = FitnessActivity & {
   source: "garmin";
   localDay: string;
+  movingDurationSeconds: number | null;
+  elapsedDurationSeconds: number | null;
+  maximumHeartRateBpm: number | null;
+  elevationGainMeters: number | null;
+  elevationLossMeters: number | null;
+  averageSpeedMps: number | null;
+  maximumSpeedMps: number | null;
+  averageCadenceSpm: number | null;
+  maximumCadenceSpm: number | null;
+  averagePowerWatts: number | null;
+  maximumPowerWatts: number | null;
+  normalizedPowerWatts: number | null;
+  aerobicTrainingEffect: number | null;
+  anaerobicTrainingEffect: number | null;
+  trainingLoad: number | null;
+  /** Garmin's key, such as "AEROBIC_BASE"; humanised for display. */
+  trainingEffectLabel: string | null;
 };
 
 /** One activity for its detail page; `source` says which shape it is. */
@@ -177,9 +196,9 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
 
 /**
  * One activity for its detail page, shaped by source: a Hevy row also loads its
- * exercises and sets, a Garmin row does not. The first query reads the columns
- * every source has, which is how the source is known; only Hevy pays for a
- * second.
+ * exercises and sets, a Garmin row does not. One query reads the row's own
+ * columns, the Garmin metrics included (they sit on the same row, so a second
+ * round trip would buy nothing); only Hevy pays for the exercises query.
  */
 export const getFitnessActivity = createServerFn({ method: "GET" })
   .validator((data: { id: string }) => ({ id: activityIdSchema.parse(data.id) }))
@@ -188,7 +207,8 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
     const { data: row, error } = await supabase
       .from("fitness_activities")
       .select(
-        "id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg",
+        `id, source, activity_name, activity_type, local_day, started_at, duration_seconds, distance_meters, calories_kcal, average_heart_rate_bpm, total_sets, active_sets, total_reps, total_volume_kg,
+        moving_duration_seconds, elapsed_duration_seconds, maximum_heart_rate_bpm, elevation_gain_meters, elevation_loss_meters, average_speed_mps, maximum_speed_mps, average_cadence_spm, maximum_cadence_spm, average_power_watts, maximum_power_watts, normalized_power_watts, aerobic_training_effect, anaerobic_training_effect, training_load, training_effect_label`,
       )
       .eq("user_id", userId)
       .eq("id", data.id)
@@ -199,7 +219,27 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
 
     const activity = toFitnessActivity(row);
     if (activity.source === "garmin") {
-      return { ...activity, source: "garmin", localDay: row.local_day };
+      return {
+        ...activity,
+        source: "garmin",
+        localDay: row.local_day,
+        movingDurationSeconds: row.moving_duration_seconds,
+        elapsedDurationSeconds: row.elapsed_duration_seconds,
+        maximumHeartRateBpm: row.maximum_heart_rate_bpm,
+        elevationGainMeters: row.elevation_gain_meters,
+        elevationLossMeters: row.elevation_loss_meters,
+        averageSpeedMps: row.average_speed_mps,
+        maximumSpeedMps: row.maximum_speed_mps,
+        averageCadenceSpm: row.average_cadence_spm,
+        maximumCadenceSpm: row.maximum_cadence_spm,
+        averagePowerWatts: row.average_power_watts,
+        maximumPowerWatts: row.maximum_power_watts,
+        normalizedPowerWatts: row.normalized_power_watts,
+        aerobicTrainingEffect: row.aerobic_training_effect,
+        anaerobicTrainingEffect: row.anaerobic_training_effect,
+        trainingLoad: row.training_load,
+        trainingEffectLabel: row.training_effect_label,
+      };
     }
 
     const { data: exercises, error: exercisesError } = await supabase

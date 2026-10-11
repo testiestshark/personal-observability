@@ -1,6 +1,7 @@
 import {
   formatActivityTime,
   formatActivityType,
+  formatCalories,
   formatHeartRate,
   formatKilometres,
   MIN_SHOWN_DISTANCE_METERS,
@@ -32,6 +33,16 @@ function rateInputs(
   return { durationSeconds, distanceMeters };
 }
 
+/** Seconds per km as "5:30 /km". */
+function formatPace(secondsPerKm: number): string {
+  // Round once, to whole seconds per km, then split: rounding minutes and
+  // seconds separately would show 5:60.
+  const rounded = Math.round(secondsPerKm);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = String(rounded % 60).padStart(2, "0");
+  return `${minutes}:${seconds} /km`;
+}
+
 /** Average pace as "5:30 /km": duration over distance. "—" when it cannot be worked out. */
 export function formatAveragePace(
   durationSeconds: number | null,
@@ -39,12 +50,7 @@ export function formatAveragePace(
 ): string {
   const inputs = rateInputs(durationSeconds, distanceMeters);
   if (!inputs) return MISSING;
-  // Round once, to whole seconds per km, then split: rounding minutes and
-  // seconds separately would show 5:60.
-  const secondsPerKm = Math.round(inputs.durationSeconds / (inputs.distanceMeters / 1_000));
-  const minutes = Math.floor(secondsPerKm / 60);
-  const seconds = String(secondsPerKm % 60).padStart(2, "0");
-  return `${minutes}:${seconds} /km`;
+  return formatPace(inputs.durationSeconds / (inputs.distanceMeters / 1_000));
 }
 
 /** Average speed as "15.0 km/h": distance over duration. "—" when it cannot be worked out. */
@@ -59,6 +65,167 @@ export function formatAverageSpeed(
 }
 
 export type GarminHeadlineTile = { label: string; value: string };
+
+export type GarminRow = { label: string; value: string };
+
+/** A titled block of metrics below the headline grid; never empty. */
+export type GarminSection = { title: string; rows: GarminRow[] };
+
+/**
+ * Moving and elapsed time are repeated lines of the headline Time, so they are
+ * shown only when they differ from it by more than this: a few seconds of
+ * stop-start noise is not information.
+ */
+export const SECONDARY_TIME_THRESHOLD_SECONDS = 5;
+
+/** A metric Garmin reported. Null is "not reported" and a true 0 is kept. */
+function isReported(value: number | null): value is number {
+  return value !== null && Number.isFinite(value);
+}
+
+/** A row for a reported value, or nothing, so a section can drop what it lacks. */
+function metricRow(
+  label: string,
+  value: number | null,
+  format: (reported: number) => string,
+): GarminRow[] {
+  return isReported(value) ? [{ label, value: format(value) }] : [];
+}
+
+function wholeNumber(value: number): string {
+  return Math.round(value).toLocaleString("en-GB");
+}
+
+function oneDecimal(value: number): string {
+  return value.toFixed(1);
+}
+
+/** Metres per second as "18.0 km/h". */
+function formatKmPerHour(metersPerSecond: number): string {
+  return `${(metersPerSecond * 3.6).toFixed(1)} km/h`;
+}
+
+/** "28:42" under an hour, "1:02:05" from an hour up: seconds shown, so a small gap is visible. */
+function formatClock(totalSeconds: number): string {
+  const rounded = Math.round(totalSeconds);
+  const hours = Math.floor(rounded / 3_600);
+  const minutes = Math.floor((rounded % 3_600) / 60);
+  const seconds = String(rounded % 60).padStart(2, "0");
+  if (hours === 0) return `${minutes}:${seconds}`;
+  return `${hours}:${String(minutes).padStart(2, "0")}:${seconds}`;
+}
+
+/**
+ * Garmin's training-effect key as a sentence: "AEROBIC_BASE" is "Aerobic base".
+ * A word with a digit stays in capitals ("VO2MAX"), which lower-casing would
+ * turn into the unreadable "Vo2max". Null when there is nothing to show.
+ */
+export function humaniseTrainingEffectLabel(label: string | null): string | null {
+  const words =
+    label
+      ?.trim()
+      .split(/[_\s]+/)
+      .filter(Boolean) ?? [];
+  if (words.length === 0) return null;
+  const text = words.map((word) => (/\d/.test(word) ? word : word.toLowerCase())).join(" ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Moving or elapsed time, when it adds to the headline Time rather than repeating it. */
+function secondaryTimeRow(
+  label: string,
+  seconds: number | null,
+  headlineSeconds: number | null,
+): GarminRow[] {
+  if (!isReported(seconds)) return [];
+  // With no headline Time there is nothing to repeat, so the line is the only
+  // place the duration appears.
+  const repeatsHeadline =
+    isReported(headlineSeconds) &&
+    Math.abs(seconds - headlineSeconds) <= SECONDARY_TIME_THRESHOLD_SECONDS;
+  return repeatsHeadline ? [] : [{ label, value: formatClock(seconds) }];
+}
+
+/**
+ * Pace and speed from the stored speeds. Foot activities get a best pace from
+ * max speed (their average pace is already a headline tile); anything else gets
+ * average and max speed in km/h. A speed of 0 gives no pace, so it is dropped.
+ */
+function paceAndSpeedRows(activity: GarminActivityDetail): GarminRow[] {
+  if (isFootActivity(activity.type)) {
+    const best = activity.maximumSpeedMps;
+    return isReported(best) && best > 0
+      ? [{ label: "Best pace", value: formatPace(1_000 / best) }]
+      : [];
+  }
+  return [
+    ...metricRow("Avg speed", activity.averageSpeedMps, formatKmPerHour),
+    ...metricRow("Max speed", activity.maximumSpeedMps, formatKmPerHour),
+  ];
+}
+
+/**
+ * The secondary sections below the headline grid, in a fixed order. A section
+ * with no reported metric is left out entirely rather than rendered empty, and
+ * a null never becomes a 0. Power and training load are always null for the
+ * owner's runs today; they appear on their own once the worker fills them.
+ */
+export function garminActivitySections(activity: GarminActivityDetail): GarminSection[] {
+  const benefit = humaniseTrainingEffectLabel(activity.trainingEffectLabel);
+  const sections: GarminSection[] = [
+    {
+      title: "Effort",
+      rows: [
+        ...metricRow("Max HR", activity.maximumHeartRateBpm, (bpm) => formatHeartRate(bpm)),
+        ...metricRow("Calories", activity.caloriesKcal, (kcal) => formatCalories(kcal)),
+      ],
+    },
+    {
+      title: "Elevation",
+      rows: [
+        ...metricRow("Gain", activity.elevationGainMeters, (m) => `${wholeNumber(m)} m`),
+        ...metricRow("Loss", activity.elevationLossMeters, (m) => `${wholeNumber(m)} m`),
+      ],
+    },
+    { title: "Pace and speed", rows: paceAndSpeedRows(activity) },
+    {
+      title: "Running form",
+      rows: [
+        ...metricRow("Avg cadence", activity.averageCadenceSpm, (spm) => `${wholeNumber(spm)} spm`),
+        ...metricRow("Max cadence", activity.maximumCadenceSpm, (spm) => `${wholeNumber(spm)} spm`),
+      ],
+    },
+    {
+      title: "Training effect",
+      rows: [
+        ...metricRow("Aerobic", activity.aerobicTrainingEffect, oneDecimal),
+        ...metricRow("Anaerobic", activity.anaerobicTrainingEffect, oneDecimal),
+        ...(benefit ? [{ label: "Primary benefit", value: benefit }] : []),
+      ],
+    },
+    {
+      title: "Time",
+      rows: [
+        ...secondaryTimeRow("Moving", activity.movingDurationSeconds, activity.durationSeconds),
+        ...secondaryTimeRow("Elapsed", activity.elapsedDurationSeconds, activity.durationSeconds),
+      ],
+    },
+    {
+      title: "Power and training load",
+      rows: [
+        ...metricRow("Avg power", activity.averagePowerWatts, (w) => `${wholeNumber(w)} W`),
+        ...metricRow("Max power", activity.maximumPowerWatts, (w) => `${wholeNumber(w)} W`),
+        ...metricRow(
+          "Normalized power",
+          activity.normalizedPowerWatts,
+          (w) => `${wholeNumber(w)} W`,
+        ),
+        ...metricRow("Training load", activity.trainingLoad, wholeNumber),
+      ],
+    },
+  ];
+  return sections.filter((section) => section.rows.length > 0);
+}
 
 export type GarminActivityHeader = {
   title: string;
