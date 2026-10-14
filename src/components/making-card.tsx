@@ -1,9 +1,15 @@
 import { Lock } from "lucide-react";
 import { Bar, BarChart, XAxis } from "recharts";
 
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { formatActivityTime } from "@/lib/health/format";
+import { formatActivityTime, formatSyncStatus } from "@/lib/health/format";
 import type { GithubCommit, GithubMaking } from "@/lib/github/github.functions";
 import { summariseDay, weekSeries, type AccountDay } from "@/lib/github/making";
 import { formatDayLabel } from "@/lib/weight/units";
@@ -26,18 +32,22 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
         <h2 className="mt-1 font-display text-xl text-foreground">Making</h2>
       </div>
 
-      {accounts.length === 0 || summary.allNotSynced ? (
+      {accounts.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs text-muted-foreground">
-          {accounts.length === 0
-            ? "No GitHub account connected yet."
-            : "GitHub has not been synced for this day yet."}
+          No GitHub account connected yet.
         </div>
       ) : (
         <>
-          <p className="mt-4 font-display text-3xl text-foreground">
-            {plural(summary.total, "contribution", "contributions")}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{breakdown(summary.tally)}</p>
+          {summary.allNotSynced ? (
+            <p className="mt-4 text-sm text-muted-foreground">Not synced for this day yet.</p>
+          ) : (
+            <>
+              <p className="mt-4 font-display text-3xl text-foreground">
+                {plural(summary.total, "contribution", "contributions")}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">{breakdown(summary.tally)}</p>
+            </>
+          )}
 
           {summary.total > 0 ? <SplitBar entries={summary.accounts} /> : null}
 
@@ -129,6 +139,9 @@ function AccountBlock({
           style={{ backgroundColor: colour }}
         />
         <h3 className="text-sm font-medium text-foreground">{account.label}</h3>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {account.lastSyncedAt ? formatSyncStatus(account.lastSyncedAt) : "Never synced"}
+        </span>
       </div>
 
       {state === "not-synced" ? (
@@ -178,7 +191,7 @@ function WeekStrip({ making, day }: { making: GithubMaking; day: string }) {
   return (
     <div className="mt-5">
       <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">Last 7 days</p>
-      <ChartContainer config={config} className="mt-2 aspect-auto h-28 w-full">
+      <ChartContainer config={config} className="mt-2 aspect-auto h-36 w-full">
         <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="day"
@@ -187,6 +200,7 @@ function WeekStrip({ making, day }: { making: GithubMaking; day: string }) {
             tickFormatter={(value: string) => formatDayLabel(value).split(" ")[0] ?? value}
           />
           <ChartTooltip content={<ChartTooltipContent labelFormatter={formatDayLabel} />} />
+          <ChartLegend content={<ChartLegendContent />} />
           {making.accounts.map((account) => (
             <Bar
               key={account.id}

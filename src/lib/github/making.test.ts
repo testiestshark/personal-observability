@@ -119,6 +119,10 @@ describe("tokenWarning", () => {
     expect(tokenWarning("2026-10-14T18:00:00Z", now)).toEqual({ kind: "expiring", days: 1 });
   });
 
+  it("is silent just past the 14-day threshold", () => {
+    expect(tokenWarning("2026-10-28T12:00:00.001Z", now)).toBeNull();
+  });
+
   it("reports an expired token", () => {
     expect(tokenWarning("2026-10-14T11:59:59Z", now)).toEqual({ kind: "expired", days: 0 });
   });

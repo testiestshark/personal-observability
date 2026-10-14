@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Fragment } from "react";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
 import { formatSyncStatus } from "@/lib/health/format";
@@ -49,23 +48,31 @@ function Integrations() {
 
       <div className="grid gap-4">
         <section className="rounded-xl border border-border bg-card p-4">
-          <h2 className="text-sm font-medium">Planned sources</h2>
+          <h2 className="text-sm font-medium">GitHub</h2>
           <div className="mt-2">
             {githubAccounts.length === 0 ? (
-              <PlaceholderRow label="GitHub" value="Not connected" />
+              <PlaceholderRow label="No account connected" value="Not connected" />
             ) : (
               githubAccounts.map(({ account, lastSyncedAt, warnings }) => (
-                <Fragment key={account.id}>
+                <div key={account.id} className="border-b border-border last:border-0">
                   <PlaceholderRow
-                    label={`GitHub — ${account.label}`}
-                    value={formatSyncStatus(lastSyncedAt)}
+                    label={account.label}
+                    value={lastSyncedAt ? formatSyncStatus(lastSyncedAt) : "Never synced"}
                   />
                   {warnings.map((warning) => (
-                    <PlaceholderRow key={warning} label={`⚠ ${warning}`} value={account.label} />
+                    <p key={warning} role="alert" className="pb-3 text-xs text-destructive">
+                      {warning}
+                    </p>
                   ))}
-                </Fragment>
+                </div>
               ))
             )}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h2 className="text-sm font-medium">Planned sources</h2>
+          <div className="mt-2">
             <PlaceholderRow label="Hevy workouts" value={formatSyncStatus(hevy?.lastSyncedAt)} />
             <PlaceholderRow
               label="Garmin health & activities"
