@@ -140,6 +140,15 @@ export function weekSeries(
   });
 }
 
+/** Every contribution, all accounts and kinds, in the week ending on `day`. */
+export function weekTotal(accounts: GithubAccount[], rows: ContributionRow[], day: string): number {
+  const days = new Set(weekWindow(day));
+  const ids = new Set(accounts.map((account) => account.id));
+  return rows
+    .filter((row) => days.has(row.day) && ids.has(row.accountId))
+    .reduce((sum, row) => sum + row.count, 0);
+}
+
 export type TokenWarning = { kind: "expired" | "expiring"; days: number };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
