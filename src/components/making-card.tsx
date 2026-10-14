@@ -10,7 +10,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { formatSyncStatus } from "@/lib/health/format";
+import { formatSyncTime } from "@/lib/health/format";
 import type { GithubMaking } from "@/lib/github/github.functions";
 import { summariseDay, weekSeries, weekTotal, type AccountDay } from "@/lib/github/making";
 import { formatDayLabel } from "@/lib/weight/units";
@@ -42,7 +42,7 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
         </h2>
         {lastSyncedAt ? (
           <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-            {formatSyncStatus(lastSyncedAt)}
+            {formatSyncTime(lastSyncedAt)}
           </span>
         ) : null}
       </div>
