@@ -114,9 +114,9 @@ function Today() {
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div>
             <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
-              Activities
+              Hevy + Garmin
             </p>
-            <h2 className="mt-1 font-display text-xl text-foreground">Recorded on this day</h2>
+            <h2 className="mt-1 font-display text-xl text-foreground">Fitness activities</h2>
           </div>
 
           {activities.length ? (
