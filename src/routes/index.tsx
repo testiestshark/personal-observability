@@ -75,26 +75,6 @@ function Today() {
   const today = currentLondonDay();
   const isToday = viewedDay === today;
   const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
-  const metrics = [
-    {
-      label: "Steps",
-      value: health?.steps?.toLocaleString("en-GB") ?? "—",
-      note: isToday ? "Today" : formatDayLabel(viewedDay),
-      icon: Footprints,
-    },
-    {
-      label: "Total sleep",
-      value: formatSleep(health?.totalSleepSeconds),
-      note: formatSleepWindow(health?.sleepStartAt, health?.sleepEndAt),
-      icon: Moon,
-    },
-    {
-      label: "Resting heart rate",
-      value: formatHeartRate(health?.restingHeartRateBpm),
-      note: "Daily resting value",
-      icon: HeartPulse,
-    },
-  ];
 
   return (
     <>
@@ -108,27 +88,12 @@ function Today() {
 
       <div className="grid gap-5">
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
-          <div>
-            <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
-              Garmin + MyFitnessPal
-            </p>
-            <h2 className="mt-1 font-display text-xl text-foreground">Energy</h2>
-          </div>
-
-          {health ? (
-            <EnergyTiles health={health} day={viewedDay} today={today} />
-          ) : (
-            <EmptyState>No Garmin health data has arrived for this day yet.</EmptyState>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
               <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
-                Garmin health
+                Garmin + MyFitnessPal
               </p>
-              <h2 className="mt-1 font-display text-xl text-foreground">Daily signals</h2>
+              <h2 className="mt-1 font-display text-xl text-foreground">Health</h2>
             </div>
             {syncLabel ? (
               <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
@@ -138,16 +103,7 @@ function Today() {
           </div>
 
           {health ? (
-            <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {metrics.map((metric, index) => (
-                <MetricCard
-                  key={metric.label}
-                  {...metric}
-                  // Three tiles in two mobile columns would leave one alone on the last row.
-                  className={index === 0 ? "col-span-2 md:col-span-1" : undefined}
-                />
-              ))}
-            </div>
+            <HealthTiles health={health} day={viewedDay} today={today} />
           ) : (
             <EmptyState>No Garmin health data has arrived for this day yet.</EmptyState>
           )}
@@ -211,18 +167,18 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
   );
 }
 
-function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
+/** Two tiles a row, three rows: calories in and out, then movement, then recovery. */
+function HealthTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
   const eaten = health.consumedCaloriesKcal;
   const progress = goalProgress(eaten, health.calorieGoalKcal);
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
+    <div className="mt-4 grid grid-cols-2 gap-3">
       <MetricCard
         label="Calories eaten"
         value={formatCalories(eaten)}
         note={caloriesEatenNote(eaten, health.calorieGoalKcal, day, today)}
         icon={Utensils}
-        className="col-span-2 md:col-span-1"
       >
         {progress !== null ? (
           <div
@@ -251,6 +207,24 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         value={formatCalories(health.activeCaloriesKcal)}
         note="Movement energy"
         icon={Flame}
+      />
+      <MetricCard
+        label="Steps"
+        value={health.steps?.toLocaleString("en-GB") ?? "—"}
+        note={day === today ? "Today" : formatDayLabel(day)}
+        icon={Footprints}
+      />
+      <MetricCard
+        label="Total sleep"
+        value={formatSleep(health.totalSleepSeconds)}
+        note={formatSleepWindow(health.sleepStartAt, health.sleepEndAt)}
+        icon={Moon}
+      />
+      <MetricCard
+        label="Resting heart rate"
+        value={formatHeartRate(health.restingHeartRateBpm)}
+        note="Daily resting value"
+        icon={HeartPulse}
       />
     </div>
   );
@@ -300,19 +274,15 @@ function MetricCard({
   note,
   icon: Icon,
   children,
-  className,
 }: {
   label: string;
   value: string;
   note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: ReactNode;
-  className?: string | undefined;
 }) {
   return (
-    <article
-      className={`min-w-0 rounded-xl border border-border bg-background/40 p-3.5 ${className ?? ""}`}
-    >
+    <article className="min-w-0 rounded-xl border border-border bg-background/40 p-3.5">
       <div className="flex items-center gap-2 text-muted-foreground">
         <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
         <span className="truncate text-[11px]">{label}</span>

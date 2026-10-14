@@ -28,10 +28,9 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
-      <div>
-        <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">GitHub</p>
-        <h2 className="mt-1 font-display text-xl text-foreground">Making</h2>
-      </div>
+      <h2 className="text-[11px] font-normal tracking-[0.16em] uppercase text-muted-foreground">
+        GitHub
+      </h2>
 
       {accounts.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs text-muted-foreground">
@@ -43,7 +42,7 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
             <p className="mt-4 text-sm text-muted-foreground">Not synced for this day yet.</p>
           ) : (
             <>
-              <p className="mt-4 font-display text-3xl text-foreground">
+              <p className="mt-4 font-display text-xl text-foreground">
                 {plural(summary.total, "contribution", "contributions")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{breakdown(summary.tally)}</p>
