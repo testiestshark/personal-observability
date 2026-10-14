@@ -10,7 +10,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { formatSyncStatus } from "@/lib/health/format";
+import { formatSyncTime } from "@/lib/health/format";
 import type { GithubMaking } from "@/lib/github/github.functions";
 import { summariseDay, weekSeries, weekTotal, type AccountDay } from "@/lib/github/making";
 import { formatDayLabel } from "@/lib/weight/units";
@@ -25,12 +25,27 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 export function MakingCard({ making, day }: { making: GithubMaking; day: string }) {
   const { accounts, contributions, commits } = making;
   const summary = summariseDay(accounts, contributions, day);
+  // One sync time for the card: the most recent across accounts (ISO strings sort in time order).
+  const lastSyncedAt = accounts.reduce<string | null>(
+    (latest, account) =>
+      account.lastSyncedAt && (!latest || account.lastSyncedAt > latest)
+        ? account.lastSyncedAt
+        : latest,
+    null,
+  );
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
-      <h2 className="text-[11px] font-normal tracking-[0.16em] uppercase text-muted-foreground">
-        GitHub
-      </h2>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h2 className="text-[11px] font-normal tracking-[0.16em] uppercase text-muted-foreground">
+          GitHub
+        </h2>
+        {lastSyncedAt ? (
+          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+            {formatSyncTime(lastSyncedAt)}
+          </span>
+        ) : null}
+      </div>
 
       {accounts.length === 0 ? (
         <div className="mt-4 rounded-xl border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-xs text-muted-foreground">
@@ -42,7 +57,7 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
             <p className="mt-4 text-sm text-muted-foreground">Not synced for this day yet.</p>
           ) : (
             <>
-              <p className="mt-4 font-display text-xl text-foreground">
+              <p className="mt-1 font-display text-xl text-foreground">
                 {plural(summary.total, "contribution", "contributions")}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{breakdown(summary.tally)}</p>
@@ -142,11 +157,8 @@ function AccountBlock({
           style={{ backgroundColor: colour }}
         />
         <h3 className="text-sm font-medium text-foreground">{account.label}</h3>
-        <span className="ml-auto text-[11px] text-muted-foreground">
-          {account.lastSyncedAt ? formatSyncStatus(account.lastSyncedAt) : "Never synced"}
-        </span>
         {hasDetail ? (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
         ) : null}
       </div>
 
