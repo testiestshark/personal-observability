@@ -139,8 +139,13 @@ function Today() {
 
           {health ? (
             <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {metrics.map((metric) => (
-                <MetricCard key={metric.label} {...metric} />
+              {metrics.map((metric, index) => (
+                <MetricCard
+                  key={metric.label}
+                  {...metric}
+                  // Three tiles in two mobile columns would leave one alone on the last row.
+                  className={index === 0 ? "col-span-2 md:col-span-1" : undefined}
+                />
               ))}
             </div>
           ) : (
@@ -217,6 +222,7 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         value={formatCalories(eaten)}
         note={caloriesEatenNote(eaten, health.calorieGoalKcal, day, today)}
         icon={Utensils}
+        className="col-span-2 md:col-span-1"
       >
         {progress !== null ? (
           <div
@@ -294,15 +300,19 @@ function MetricCard({
   note,
   icon: Icon,
   children,
+  className,
 }: {
   label: string;
   value: string;
   note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: ReactNode;
+  className?: string;
 }) {
   return (
-    <article className="min-w-0 rounded-xl border border-border bg-background/40 p-3.5">
+    <article
+      className={`min-w-0 rounded-xl border border-border bg-background/40 p-3.5 ${className ?? ""}`}
+    >
       <div className="flex items-center gap-2 text-muted-foreground">
         <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
         <span className="truncate text-[11px]">{label}</span>
