@@ -961,7 +961,7 @@ class AccountsFromEnvTests(unittest.TestCase):
         [account] = accounts_from_env({"GITHUB_TOKEN_B": "t", "GITHUB_LOGIN_B": "bob"})
         self.assertEqual(account.detail, "counts_only")
         self.assertEqual(account.display_order, 1)
-        self.assertEqual(account.label, "Account B")
+        self.assertEqual(account.label, "bob")
 
     def test_an_account_prints_without_its_token_login_or_label(self) -> None:
         # A repr ends up in assertion diffs and tracebacks, so it must not carry secrets.

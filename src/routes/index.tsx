@@ -16,6 +16,8 @@ import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
 import { PageHeader } from "@/components/app-shell";
+import { MakingCard } from "@/components/making-card";
+import { getGithubMaking } from "@/lib/github/github.functions";
 import {
   caloriesEatenNote,
   energyBalance,
@@ -64,17 +66,18 @@ export const Route = createFileRoute("/")({
   }).parse,
   loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
   loader: async ({ deps: { day } }) => {
-    const [health, activities] = await Promise.all([
+    const [health, activities, making] = await Promise.all([
       getDailyHealth({ data: { day } }),
       getFitnessActivitiesForDay({ data: { day } }),
+      getGithubMaking({ data: { day } }),
     ]);
-    return { day, health, activities };
+    return { day, health, activities, making };
   },
   component: Today,
 });
 
 function Today() {
-  const { health, activities, day: viewedDay } = Route.useLoaderData();
+  const { health, activities, making, day: viewedDay } = Route.useLoaderData();
   const today = currentLondonDay();
   const isToday = viewedDay === today;
   const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
@@ -156,6 +159,8 @@ function Today() {
             <EmptyState>No Garmin health data has arrived for this day yet.</EmptyState>
           )}
         </section>
+
+        <MakingCard making={making} day={viewedDay} />
 
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div>

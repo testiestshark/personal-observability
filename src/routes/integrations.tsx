@@ -1,7 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Fragment } from "react";
 
 import { PageHeader, Placeholder, PlaceholderRow } from "@/components/app-shell";
 import { formatSyncStatus } from "@/lib/health/format";
+import { getGithubStatus } from "@/lib/github/github.functions";
+import { accountStatus } from "@/lib/github/making";
 import { getGarminSyncStatus, getHevySyncStatus } from "@/lib/health/health.functions";
 
 export const Route = createFileRoute("/integrations")({
@@ -20,14 +23,21 @@ export const Route = createFileRoute("/integrations")({
     ],
   }),
   loader: async () => {
-    const [garmin, hevy] = await Promise.all([getGarminSyncStatus(), getHevySyncStatus()]);
-    return { garmin, hevy };
+    const [garmin, hevy, github] = await Promise.all([
+      getGarminSyncStatus(),
+      getHevySyncStatus(),
+      getGithubStatus(),
+    ]);
+    return { garmin, hevy, github };
   },
   component: Integrations,
 });
 
 function Integrations() {
-  const { garmin, hevy } = Route.useLoaderData();
+  const { garmin, hevy, github } = Route.useLoaderData();
+  const githubAccounts = github.accounts.map((account) =>
+    accountStatus(account, github.contributions, new Date()),
+  );
 
   return (
     <>
@@ -41,8 +51,21 @@ function Integrations() {
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="text-sm font-medium">Planned sources</h2>
           <div className="mt-2">
-            <PlaceholderRow label="GitHub — account one" value="Not connected" />
-            <PlaceholderRow label="GitHub — account two" value="Not connected" />
+            {githubAccounts.length === 0 ? (
+              <PlaceholderRow label="GitHub" value="Not connected" />
+            ) : (
+              githubAccounts.map(({ account, lastSyncedAt, warnings }) => (
+                <Fragment key={account.id}>
+                  <PlaceholderRow
+                    label={`GitHub — ${account.label}`}
+                    value={formatSyncStatus(lastSyncedAt)}
+                  />
+                  {warnings.map((warning) => (
+                    <PlaceholderRow key={warning} label={`⚠ ${warning}`} value={account.label} />
+                  ))}
+                </Fragment>
+              ))
+            )}
             <PlaceholderRow label="Hevy workouts" value={formatSyncStatus(hevy?.lastSyncedAt)} />
             <PlaceholderRow
               label="Garmin health & activities"

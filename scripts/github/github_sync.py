@@ -756,7 +756,7 @@ def accounts_from_env(values: Mapping[str, str]) -> list[AccountConfig]:
         if detail not in (DETAIL_FULL, DETAIL_COUNTS_ONLY):
             raise SyncError(f"GITHUB_DETAIL_{slot} must be 'full' or 'counts_only'.")
         accounts.append(
-            AccountConfig(slot, token, login, get(f"GITHUB_LABEL_{slot}") or f"Account {slot}", detail, order)
+            AccountConfig(slot, token, login, get(f"GITHUB_LABEL_{slot}") or login, detail, order)
         )
     if not accounts:
         raise SyncError(
