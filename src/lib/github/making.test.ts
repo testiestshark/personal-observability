@@ -6,6 +6,7 @@ import {
   tallyDay,
   tokenWarning,
   weekSeries,
+  weekTotal,
   weekWindow,
   type ContributionKind,
   type ContributionRow,
@@ -30,6 +31,18 @@ function day(accountId: string, date: string, counts: Partial<Record<Contributio
     count: counts[kind] ?? 0,
   }));
 }
+
+describe("weekTotal", () => {
+  it("sums every kind across accounts inside the 7-day window only", () => {
+    const rows = [
+      ...day("a", "2026-10-13", { commit: 4, pull_request: 1 }),
+      ...day("b", "2026-10-07", { commit: 3, unsplit: 2 }),
+      ...day("b", "2026-10-06", { commit: 99 }),
+      ...day("a", "2026-10-14", { commit: 50 }),
+    ];
+    expect(weekTotal([A, B], rows, "2026-10-13")).toBe(10);
+  });
+});
 
 describe("tallyDay", () => {
   it("sums the kinds for one account and one day only", () => {

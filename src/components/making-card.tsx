@@ -1,4 +1,5 @@
-import { Lock } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { ChevronRight } from "lucide-react";
 import { Bar, BarChart, XAxis } from "recharts";
 
 import {
@@ -9,9 +10,9 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
-import { formatActivityTime, formatSyncStatus } from "@/lib/health/format";
-import type { GithubCommit, GithubMaking } from "@/lib/github/github.functions";
-import { summariseDay, weekSeries, type AccountDay } from "@/lib/github/making";
+import { formatSyncStatus } from "@/lib/health/format";
+import type { GithubMaking } from "@/lib/github/github.functions";
+import { summariseDay, weekSeries, weekTotal, type AccountDay } from "@/lib/github/making";
 import { formatDayLabel } from "@/lib/weight/units";
 
 /** Theme tokens, one per account, so colour is never hard-coded. */
@@ -57,7 +58,8 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
                 key={entry.account.id}
                 entry={entry}
                 colour={colourFor(index)}
-                commits={commits.filter((commit) => commit.accountId === entry.account.id)}
+                day={day}
+                hasDetail={commits.some((commit) => commit.accountId === entry.account.id)}
               />
             ))}
           </div>
@@ -121,17 +123,19 @@ function SplitBar({ entries }: { entries: AccountDay[] }) {
 function AccountBlock({
   entry,
   colour,
-  commits,
+  day,
+  hasDetail,
 }: {
   entry: AccountDay;
   colour: string;
-  commits: GithubCommit[];
+  day: string;
+  /** True when the account has itemised commits for the day to open. */
+  hasDetail: boolean;
 }) {
   const { account, tally, state } = entry;
-  const itemised = account.detail === "full";
 
-  return (
-    <article className="rounded-xl border border-border bg-background/40 p-3.5">
+  const content = (
+    <>
       <div className="flex items-center gap-2">
         <span
           aria-hidden
@@ -142,6 +146,9 @@ function AccountBlock({
         <span className="ml-auto text-[11px] text-muted-foreground">
           {account.lastSyncedAt ? formatSyncStatus(account.lastSyncedAt) : "Never synced"}
         </span>
+        {hasDetail ? (
+          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        ) : null}
       </div>
 
       {state === "not-synced" ? (
@@ -154,28 +161,19 @@ function AccountBlock({
           {plural(tally.issue, "issue", "issues")}
         </p>
       )}
+    </>
+  );
 
-      {itemised && commits.length > 0 ? (
-        <ul className="mt-3 grid gap-1.5">
-          {commits.map((commit) => (
-            <li key={commit.oid} className="flex items-start gap-2 text-xs">
-              <span className="w-11 shrink-0 text-muted-foreground tabular-nums">
-                {formatActivityTime(commit.authoredAt)}
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-1 text-muted-foreground">
-                  {commit.isPrivate ? (
-                    <Lock className="h-3 w-3 shrink-0" aria-label="Private repository" />
-                  ) : null}
-                  <span className="truncate">{commit.repo}</span>
-                </span>
-                <span className="block break-words text-foreground">{commit.headline}</span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </article>
+  return hasDetail ? (
+    <Link
+      to="/github/$day"
+      params={{ day }}
+      className="block rounded-xl border border-border bg-background/40 p-3.5 transition-colors hover:bg-accent"
+    >
+      {content}
+    </Link>
+  ) : (
+    <article className="rounded-xl border border-border bg-background/40 p-3.5">{content}</article>
   );
 }
 
@@ -190,7 +188,16 @@ function WeekStrip({ making, day }: { making: GithubMaking; day: string }) {
 
   return (
     <div className="mt-5">
-      <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">Last 7 days</p>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">Last 7 days</p>
+        <p className="text-xs text-foreground">
+          {plural(
+            weekTotal(making.accounts, making.contributions, day),
+            "contribution",
+            "contributions",
+          )}
+        </p>
+      </div>
       <ChartContainer config={config} className="mt-2 aspect-auto h-36 w-full">
         <BarChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
           <XAxis
