@@ -63,7 +63,6 @@ function breakdown(tally: ReturnType<typeof summariseDay>["tally"]): string {
   const parts = [
     plural(tally.commit, "commit", "commits"),
     plural(tally.pull_request, "PR", "PRs"),
-    plural(tally.review, "review", "reviews"),
     plural(tally.issue, "issue", "issues"),
   ];
   if (tally.unsplit > 0) parts.push(`${tally.unsplit} private (unsplit)`);
@@ -139,7 +138,7 @@ function AccountBlock({
       ) : (
         <p className="mt-2 text-xs text-muted-foreground">
           {plural(tally.commit, "commit", "commits")} · {plural(tally.pull_request, "PR", "PRs")} ·{" "}
-          {plural(tally.review, "review", "reviews")} · {plural(tally.issue, "issue", "issues")}
+          {plural(tally.issue, "issue", "issues")}
         </p>
       )}
 
