@@ -332,6 +332,123 @@ export type Database = {
           },
         ];
       };
+      github_accounts: {
+        Row: {
+          created_at: string;
+          detail: string;
+          display_order: number;
+          github_node_id: string;
+          github_user_id: number;
+          id: string;
+          label: string;
+          last_synced_at: string | null;
+          login: string;
+          token_expires_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          detail?: string;
+          display_order?: number;
+          github_node_id: string;
+          github_user_id: number;
+          id?: string;
+          label: string;
+          last_synced_at?: string | null;
+          login: string;
+          token_expires_at?: string | null;
+          user_id?: string;
+        };
+        Update: {
+          created_at?: string;
+          detail?: string;
+          display_order?: number;
+          github_node_id?: string;
+          github_user_id?: number;
+          id?: string;
+          label?: string;
+          last_synced_at?: string | null;
+          login?: string;
+          token_expires_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      github_commits: {
+        Row: {
+          account_id: string;
+          author_date_raw: string | null;
+          authored_at: string;
+          id: string;
+          local_day: string;
+          message_headline: string;
+          oid: string;
+          repo_is_private: boolean;
+          repo_name_with_owner: string;
+          repo_node_id: string;
+          synced_at: string;
+          user_id: string;
+        };
+        Insert: {
+          account_id: string;
+          author_date_raw?: string | null;
+          authored_at: string;
+          id?: string;
+          local_day: string;
+          message_headline: string;
+          oid: string;
+          repo_is_private: boolean;
+          repo_name_with_owner: string;
+          repo_node_id: string;
+          synced_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          account_id?: string;
+          author_date_raw?: string | null;
+          authored_at?: string;
+          id?: string;
+          local_day?: string;
+          message_headline?: string;
+          oid?: string;
+          repo_is_private?: boolean;
+          repo_name_with_owner?: string;
+          repo_node_id?: string;
+          synced_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      github_daily_contributions: {
+        Row: {
+          account_id: string;
+          count: number;
+          id: string;
+          kind: string;
+          local_day: string;
+          synced_at: string;
+          user_id: string;
+        };
+        Insert: {
+          account_id: string;
+          count: number;
+          id?: string;
+          kind: string;
+          local_day: string;
+          synced_at?: string;
+          user_id?: string;
+        };
+        Update: {
+          account_id?: string;
+          count?: number;
+          id?: string;
+          kind?: string;
+          local_day?: string;
+          synced_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       sync_runs: {
         Row: {
           last_succeeded_at: string;
