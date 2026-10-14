@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Activity,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -8,7 +7,6 @@ import {
   Footprints,
   HeartPulse,
   Moon,
-  Scale,
   Sparkles,
   Utensils,
 } from "lucide-react";
@@ -20,8 +18,6 @@ import { MakingCard } from "@/components/making-card";
 import { getGithubMaking } from "@/lib/github/github.functions";
 import {
   caloriesEatenNote,
-  energyBalance,
-  energyBalanceNote,
   formatActivitySummary,
   formatActivityTime,
   formatActivityType,
@@ -30,9 +26,7 @@ import {
   formatSleep,
   formatSleepWindow,
   formatSyncTime,
-  formatVo2Max,
   goalProgress,
-  isCompleteDay,
 } from "@/lib/health/format";
 import { isActivityLinked } from "@/lib/health/workout";
 import {
@@ -100,12 +94,6 @@ function Today() {
       note: "Daily resting value",
       icon: HeartPulse,
     },
-    {
-      label: "VO₂ max",
-      value: formatVo2Max(health?.vo2Max),
-      note: "Cardio fitness estimate",
-      icon: Activity,
-    },
   ];
 
   return (
@@ -151,8 +139,13 @@ function Today() {
 
           {health ? (
             <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
-              {metrics.map((metric) => (
-                <MetricCard key={metric.label} {...metric} />
+              {metrics.map((metric, index) => (
+                <MetricCard
+                  key={metric.label}
+                  {...metric}
+                  // Three tiles in two mobile columns would leave one alone on the last row.
+                  className={index === 0 ? "col-span-2 md:col-span-1" : undefined}
+                />
               ))}
             </div>
           ) : (
@@ -220,17 +213,16 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
 
 function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
   const eaten = health.consumedCaloriesKcal;
-  const total = health.totalCaloriesKcal;
-  const complete = isCompleteDay(day, today, health.sourceSyncedAt);
   const progress = goalProgress(eaten, health.calorieGoalKcal);
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
       <MetricCard
         label="Calories eaten"
         value={formatCalories(eaten)}
         note={caloriesEatenNote(eaten, health.calorieGoalKcal, day, today)}
         icon={Utensils}
+        className="col-span-2 md:col-span-1"
       >
         {progress !== null ? (
           <div
@@ -249,8 +241,8 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         ) : null}
       </MetricCard>
       <MetricCard
-        label="Total calories"
-        value={formatCalories(total)}
+        label="Calories expended"
+        value={formatCalories(health.totalCaloriesKcal)}
         note="Garmin estimate"
         icon={Sparkles}
       />
@@ -259,12 +251,6 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         value={formatCalories(health.activeCaloriesKcal)}
         note="Movement energy"
         icon={Flame}
-      />
-      <MetricCard
-        label="Energy balance"
-        value={formatCalories(energyBalance(eaten, total, complete))}
-        note={energyBalanceNote(complete, eaten, total)}
-        icon={Scale}
       />
     </div>
   );
@@ -314,15 +300,19 @@ function MetricCard({
   note,
   icon: Icon,
   children,
+  className,
 }: {
   label: string;
   value: string;
   note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: ReactNode;
+  className?: string | undefined;
 }) {
   return (
-    <article className="min-w-0 rounded-xl border border-border bg-background/40 p-3.5">
+    <article
+      className={`min-w-0 rounded-xl border border-border bg-background/40 p-3.5 ${className ?? ""}`}
+    >
       <div className="flex items-center gap-2 text-muted-foreground">
         <Icon className="h-4 w-4 shrink-0" strokeWidth={1.75} />
         <span className="truncate text-[11px]">{label}</span>

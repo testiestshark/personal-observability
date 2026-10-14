@@ -1,5 +1,3 @@
-import { londonDayKey } from "@/lib/weight/units";
-
 import type { FitnessActivity } from "./health.functions";
 
 const londonTime = new Intl.DateTimeFormat("en-GB", {
@@ -30,12 +28,6 @@ export function formatSleepWindow(
 
 export function formatHeartRate(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : `${value} bpm`;
-}
-
-export function formatVo2Max(value: number | null | undefined): string {
-  return value === null || value === undefined
-    ? "—"
-    : value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
 }
 
 export function formatActivityType(value: string): string {
@@ -77,33 +69,6 @@ export function formatSyncTime(value: string | null | undefined): string | null 
 /** The first London day MyFitnessPal passed food to Garmin. See CONTEXT.md. */
 export const MFP_LINK_DATE = "2026-09-28";
 
-/**
- * Whether a day's Total calories is final: the day has ended in London, and
- * Garmin's last watch sync came after that end.
- *
- * "After the London midnight ending `day`" is the same as "the sync's London
- * day is later than `day`", which lets the day key do the BST/GMT offset work.
- * Day keys compare correctly as strings.
- */
-export function isCompleteDay(
-  day: string,
-  today: string,
-  sourceSyncedAt: string | null | undefined,
-): boolean {
-  if (!sourceSyncedAt || day >= today) return false;
-  return londonDayKey(sourceSyncedAt) > day;
-}
-
-/** Calories eaten minus Total calories; null unless the day is complete. */
-export function energyBalance(
-  caloriesEaten: number | null | undefined,
-  totalCalories: number | null | undefined,
-  complete: boolean,
-): number | null {
-  if (!complete || isMissing(caloriesEaten) || isMissing(totalCalories)) return null;
-  return caloriesEaten - totalCalories;
-}
-
 function isMissing(value: number | null | undefined): value is null | undefined {
   return value === null || value === undefined;
 }
@@ -134,18 +99,6 @@ export function goalProgress(
 ): number | null {
   if (isMissing(caloriesEaten) || isMissing(calorieGoal) || calorieGoal <= 0) return null;
   return Math.min(caloriesEaten / calorieGoal, 1);
-}
-
-/** Why there is no Energy balance to show, if there isn't one. */
-export function energyBalanceNote(
-  complete: boolean,
-  caloriesEaten: number | null | undefined,
-  totalCalories: number | null | undefined,
-): string | undefined {
-  if (!complete) return "Final once the day is synced";
-  if (isMissing(caloriesEaten)) return "No calories eaten";
-  if (isMissing(totalCalories)) return "No total calories";
-  return undefined;
 }
 
 const syncTime = new Intl.DateTimeFormat("en-GB", {
