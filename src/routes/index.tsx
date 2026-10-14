@@ -307,7 +307,7 @@ function MetricCard({
   note?: string | undefined;
   icon: ComponentType<{ className?: string; strokeWidth?: number }>;
   children?: ReactNode;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <article
