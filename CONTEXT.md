@@ -38,20 +38,13 @@ _Avoid_: Consumed calories (the storage/Garmin word, not a UI label), intake, fo
 Garmin's estimate of the energy spent on movement in a day, excluding resting metabolism.
 _Avoid_: Exercise calories, calories burned
 
-**Total calories**:
-Garmin's estimate of all energy spent in a day, including resting metabolism. Only complete once the day has ended and the watch has synced.
-_Avoid_: Calories burned, TDEE
+**Calories expended**:
+Garmin's estimate of all energy spent in a day, including resting metabolism. Still growing until the day has ended and the watch has synced. Stored as `total_calories_kcal`.
+_Avoid_: Total calories (the former UI label), calories burned, TDEE
 
 **Calorie goal**:
 The daily food-energy target the owner sets in MyFitnessPal, as it stood on that day. A goal change does not rewrite past days.
 _Avoid_: Target, budget, net calorie goal
-
-**Complete day**:
-A **Local day** that has ended and that Garmin has synced after its end, so its **Total calories** is final.
-
-**Energy balance**:
-**Calories eaten** minus **Total calories** for a **Complete day**. A negative value is a deficit. It is undefined for a day that isn't complete.
-_Avoid_: Net calories, surplus/deficit (as the term itself)
 
 **MFP link date**:
 2026-09-28, the first day MyFitnessPal passed food to Garmin. Before it, no day has **Calories eaten**, and that is expected rather than a gap in logging.

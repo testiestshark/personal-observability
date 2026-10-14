@@ -1,6 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  Activity,
   ChevronLeft,
   ChevronRight,
   Clock3,
@@ -8,7 +7,6 @@ import {
   Footprints,
   HeartPulse,
   Moon,
-  Scale,
   Sparkles,
   Utensils,
 } from "lucide-react";
@@ -20,8 +18,6 @@ import { MakingCard } from "@/components/making-card";
 import { getGithubMaking } from "@/lib/github/github.functions";
 import {
   caloriesEatenNote,
-  energyBalance,
-  energyBalanceNote,
   formatActivitySummary,
   formatActivityTime,
   formatActivityType,
@@ -30,9 +26,7 @@ import {
   formatSleep,
   formatSleepWindow,
   formatSyncTime,
-  formatVo2Max,
   goalProgress,
-  isCompleteDay,
 } from "@/lib/health/format";
 import { isActivityLinked } from "@/lib/health/workout";
 import {
@@ -99,12 +93,6 @@ function Today() {
       value: formatHeartRate(health?.restingHeartRateBpm),
       note: "Daily resting value",
       icon: HeartPulse,
-    },
-    {
-      label: "VO₂ max",
-      value: formatVo2Max(health?.vo2Max),
-      note: "Cardio fitness estimate",
-      icon: Activity,
     },
   ];
 
@@ -220,12 +208,10 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
 
 function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string; today: string }) {
   const eaten = health.consumedCaloriesKcal;
-  const total = health.totalCaloriesKcal;
-  const complete = isCompleteDay(day, today, health.sourceSyncedAt);
   const progress = goalProgress(eaten, health.calorieGoalKcal);
 
   return (
-    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
       <MetricCard
         label="Calories eaten"
         value={formatCalories(eaten)}
@@ -249,8 +235,8 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         ) : null}
       </MetricCard>
       <MetricCard
-        label="Total calories"
-        value={formatCalories(total)}
+        label="Calories expended"
+        value={formatCalories(health.totalCaloriesKcal)}
         note="Garmin estimate"
         icon={Sparkles}
       />
@@ -259,12 +245,6 @@ function EnergyTiles({ health, day, today }: { health: DailyHealth; day: string;
         value={formatCalories(health.activeCaloriesKcal)}
         note="Movement energy"
         icon={Flame}
-      />
-      <MetricCard
-        label="Energy balance"
-        value={formatCalories(energyBalance(eaten, total, complete))}
-        note={energyBalanceNote(complete, eaten, total)}
-        icon={Scale}
       />
     </div>
   );
