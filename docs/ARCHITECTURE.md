@@ -54,6 +54,20 @@ Detailed planned designs:
 - [Railway-hosted Garmin sync](integrations/RAILWAY.md)
 - [GitHub activity, two accounts](integrations/GITHUB_MULTI_ACCOUNT.md) (supersedes [GitHub integration](integrations/GITHUB.md))
 
+### The `weather` schema
+
+Run weather (#131) is the first table outside `public`: `weather.run_weather`, one row per
+Garmin run, written by the Garmin worker after it stores activities and read through the
+API. Anything the API serves must be listed as an exposed schema, so `supabase/config.toml`
+has an `[api]` block naming `weather` for the local stack, and hosted needs the same added
+by hand in the dashboard (a migration cannot do it).
+
+A local database that lacks the schema (before this migration is applied) makes PostgREST
+fail to start. If `supabase start` reports `schema "weather" does not exist`, comment out
+the `[api]` block, start, run `bunx supabase migration up --local`, restore the block, then
+`supabase stop` and `start`. The table follows the standard ownership pattern; see
+[GARMIN.md](integrations/GARMIN.md#run-weather) for the worker behaviour.
+
 ## Environments and sync model
 
 Two independent Supabase projects exist:

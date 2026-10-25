@@ -1,7 +1,12 @@
+import contextlib
+import io
+import json
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlsplit
 
 from garmin_sync import (
     SyncError,
@@ -16,9 +21,13 @@ from garmin_sync import (
     normalize_daily_health,
     normalize_laps,
     normalize_steps,
+    map_run_weather,
+    outdoor_run_starts,
     session_for_sync,
+    store_run_weather,
     store_splits,
     validate_railway_volume,
+    weather_request_url,
     _vo2_max,
 )
 
@@ -639,6 +648,378 @@ class SessionForSyncTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(SyncError, "must be configured together"):
                 session_for_sync(supabase)
+
+
+# A start point nobody could confuse with a rounded one, so a leak is visible.
+RAW_LAT = 51.48123
+RAW_LON = -0.12345
+
+
+def _outdoor(**overrides: object) -> dict[str, object]:
+    return {
+        "activityId": 9001,
+        "activityType": {"typeKey": "running"},
+        "startTimeGMT": "2026-10-20 07:05:19",
+        "startLatitude": RAW_LAT,
+        "startLongitude": RAW_LON,
+        **overrides,
+    }
+
+
+def _archive(day: str, hours: dict[int, dict[str, object]] | None = None) -> dict[str, object]:
+    """An Open-Meteo archive payload for a UTC day; hours not given are null."""
+    variables = (
+        "temperature_2m",
+        "apparent_temperature",
+        "relative_humidity_2m",
+        "wind_speed_10m",
+        "precipitation",
+    )
+    payload: dict[str, object] = {
+        "hourly": {"time": [f"{day}T{hour:02d}:00" for hour in range(24)]}
+    }
+    defaults = dict(zip(variables, (11.2, 9.1, 78, 8.4, 0.0)))
+    for variable in variables:
+        payload["hourly"][variable] = [  # type: ignore[index]
+            ({**defaults, **hours[hour]}[variable] if hours and hour in hours else None)
+            for hour in range(24)
+        ]
+    return payload
+
+
+class OutdoorRunStartsTests(unittest.TestCase):
+    def test_rounds_the_start_point_to_one_decimal_place(self) -> None:
+        (start,) = outdoor_run_starts([_outdoor()])
+
+        self.assertEqual((start.latitude, start.longitude), (51.5, -0.1))
+        self.assertEqual(start.external_id, "9001")
+        self.assertEqual(start.started_at, datetime(2026, 10, 20, 7, 5, 19, tzinfo=timezone.utc))
+
+    def test_leaves_out_a_treadmill_run_which_has_no_coordinate_keys_at_all(self) -> None:
+        treadmill = _outdoor(activityType={"typeKey": "treadmill_running"})
+        del treadmill["startLatitude"], treadmill["startLongitude"]
+
+        self.assertEqual(outdoor_run_starts([treadmill]), [])
+
+    def test_leaves_out_an_indoor_type_even_if_it_carries_a_coordinate(self) -> None:
+        for type_key in ("treadmill_running", "indoor_walking", "virtual_run"):
+            self.assertEqual(
+                outdoor_run_starts([_outdoor(activityType={"typeKey": type_key})]), [], type_key
+            )
+
+    def test_leaves_out_missing_null_zero_or_impossible_coordinates(self) -> None:
+        for overrides in (
+            {"startLatitude": None},
+            {"startLongitude": None},
+            {"startLatitude": 0, "startLongitude": 0},
+            {"startLatitude": "51.5"},
+            {"startLatitude": 91},
+            {"startLongitude": -181},
+            {"startLatitude": float("nan")},
+        ):
+            self.assertEqual(outdoor_run_starts([_outdoor(**overrides)]), [], overrides)
+
+    def test_keeps_a_coordinate_with_one_zero_axis(self) -> None:
+        self.assertEqual(len(outdoor_run_starts([_outdoor(startLongitude=0.04)])), 1)
+
+    def test_leaves_out_non_foot_activities_and_unusable_rows(self) -> None:
+        rows = [
+            _outdoor(activityType={"typeKey": "cycling"}),
+            _outdoor(activityId=None),
+            _outdoor(activityId="12x"),
+            _outdoor(startTimeGMT=None),
+            "not a dict",
+        ]
+
+        self.assertEqual(outdoor_run_starts(rows), [])
+        self.assertEqual(outdoor_run_starts(None), [])
+
+    def test_accepts_walks_hikes_and_trail_runs(self) -> None:
+        rows = [
+            _outdoor(activityId=index, activityType={"typeKey": key})
+            for index, key in enumerate(("walking", "hiking", "trail_running"), start=1)
+        ]
+
+        self.assertEqual(len(outdoor_run_starts(rows)), 3)
+
+    def test_the_coordinate_is_not_in_the_printed_form(self) -> None:
+        (start,) = outdoor_run_starts([_outdoor()])
+
+        for text in (repr(start), str(start)):
+            self.assertNotIn("51.5", text)
+            self.assertNotIn("0.1", text)
+
+
+class WeatherRequestUrlTests(unittest.TestCase):
+    def test_asks_for_the_utc_day_in_utc_and_mph_at_the_rounded_point(self) -> None:
+        (start,) = outdoor_run_starts([_outdoor()])
+
+        query = parse_qs(urlsplit(weather_request_url(start)).query)
+
+        self.assertEqual(query["start_date"], ["2026-10-20"])
+        self.assertEqual(query["end_date"], ["2026-10-20"])
+        self.assertEqual(query["timezone"], ["UTC"])
+        self.assertEqual(query["wind_speed_unit"], ["mph"])
+        self.assertEqual(query["latitude"], ["51.5"])
+        self.assertEqual(query["longitude"], ["-0.1"])
+        self.assertEqual(
+            query["hourly"],
+            ["temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,precipitation"],
+        )
+
+    def test_the_unrounded_point_is_not_in_the_request(self) -> None:
+        (start,) = outdoor_run_starts([_outdoor()])
+
+        url = weather_request_url(start)
+
+        self.assertNotIn("51.48", url)
+        self.assertNotIn("0.12", url)
+
+
+class MapRunWeatherTests(unittest.TestCase):
+    FETCHED = "2026-10-22T08:00:00+00:00"
+
+    def test_maps_the_hour_the_run_started_in(self) -> None:
+        payload = _archive("2026-10-20", {7: {"temperature_2m": 12.4, "precipitation": 0.3}})
+
+        row = map_run_weather(payload, datetime(2026, 10, 20, 7, 59, tzinfo=timezone.utc), self.FETCHED)
+
+        self.assertEqual(
+            row,
+            {
+                "hour_start": "2026-10-20T07:00:00Z",
+                "temperature_c": 12.4,
+                "apparent_temperature_c": 9.1,
+                "relative_humidity_percent": 78.0,
+                "wind_speed_mph": 8.4,
+                "precipitation_mm": 0.3,
+                "source": "open-meteo-archive",
+                "fetched_at": self.FETCHED,
+            },
+        )
+
+    def test_the_utc_hour_is_right_either_side_of_the_clocks_going_back(self) -> None:
+        # On 2026-10-25 BST ends at 01:00 UTC, so local 01:30 happens twice:
+        # 00:30 UTC (BST) and 01:30 UTC (GMT). They are different archive hours.
+        payload = _archive(
+            "2026-10-25", {0: {"temperature_2m": 10.0}, 1: {"temperature_2m": 8.0}}
+        )
+
+        bst = map_run_weather(payload, datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc), self.FETCHED)
+        gmt = map_run_weather(payload, datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc), self.FETCHED)
+
+        self.assertEqual((bst["hour_start"], bst["temperature_c"]), ("2026-10-25T00:00:00Z", 10.0))
+        self.assertEqual((gmt["hour_start"], gmt["temperature_c"]), ("2026-10-25T01:00:00Z", 8.0))
+
+    def test_the_utc_hour_is_right_when_the_clocks_go_forward(self) -> None:
+        # 2026-03-29: GMT ends at 01:00 UTC; local 02:00-03:00 does not exist.
+        payload = _archive("2026-03-29", {0: {"temperature_2m": 4.0}, 1: {"temperature_2m": 5.0}})
+
+        before = map_run_weather(payload, datetime(2026, 3, 29, 0, 59, tzinfo=timezone.utc), self.FETCHED)
+        after = map_run_weather(payload, datetime(2026, 3, 29, 1, 0, tzinfo=timezone.utc), self.FETCHED)
+
+        self.assertEqual((before["temperature_c"], after["temperature_c"]), (4.0, 5.0))
+
+    def test_an_offset_start_is_converted_to_utc_first(self) -> None:
+        payload = _archive("2026-07-01", {6: {"temperature_2m": 15.5}})
+        start = datetime(2026, 7, 1, 7, 10, tzinfo=timezone(timedelta(hours=1)))
+
+        self.assertEqual(map_run_weather(payload, start, self.FETCHED)["temperature_c"], 15.5)
+
+    def test_zero_rain_is_a_value_not_a_gap(self) -> None:
+        payload = _archive("2026-10-20", {7: {"precipitation": 0}})
+
+        row = map_run_weather(payload, datetime(2026, 10, 20, 7, 0, tzinfo=timezone.utc), self.FETCHED)
+
+        self.assertEqual(row["precipitation_mm"], 0.0)
+
+    def test_an_hour_the_archive_has_no_values_for_yet_is_none(self) -> None:
+        payload = _archive("2026-10-20", {6: {}})
+
+        self.assertIsNone(
+            map_run_weather(payload, datetime(2026, 10, 20, 7, 0, tzinfo=timezone.utc), self.FETCHED)
+        )
+
+    def test_a_single_missing_value_is_none_rather_than_a_half_empty_row(self) -> None:
+        payload = _archive("2026-10-20", {7: {}})
+        payload["hourly"]["wind_speed_10m"][7] = None  # type: ignore[index]
+
+        self.assertIsNone(
+            map_run_weather(payload, datetime(2026, 10, 20, 7, 0, tzinfo=timezone.utc), self.FETCHED)
+        )
+
+    def test_a_day_the_response_does_not_contain_is_none(self) -> None:
+        payload = _archive("2026-10-19", {7: {}})
+
+        self.assertIsNone(
+            map_run_weather(payload, datetime(2026, 10, 20, 7, 0, tzinfo=timezone.utc), self.FETCHED)
+        )
+
+    def test_unexpected_shapes_and_impossible_values_are_none(self) -> None:
+        start = datetime(2026, 10, 20, 7, 0, tzinfo=timezone.utc)
+        for payload in (None, [], {}, {"hourly": []}, {"hourly": {"time": "x"}}):
+            self.assertIsNone(map_run_weather(payload, start, self.FETCHED), repr(payload))
+        for bad in ({"relative_humidity_2m": 140}, {"wind_speed_10m": -1}, {"precipitation": -0.1}):
+            self.assertIsNone(
+                map_run_weather(_archive("2026-10-20", {7: bad}), start, self.FETCHED), repr(bad)
+            )
+
+
+class _WeatherSupabase:
+    def __init__(self, ids: dict[str, str], have: set[str] | None = None, fail: bool = False) -> None:
+        self.ids = ids
+        self.have = have or set()
+        self.fail = fail
+        self.inserted: list[dict[str, object]] = []
+
+    def fitness_activity_ids(self, external_ids: list[str], session: dict[str, object]) -> dict[str, str]:
+        return {key: value for key, value in self.ids.items() if key in external_ids}
+
+    def run_weather_activity_ids(self, activity_ids: list[str], session: dict[str, object]) -> set[str]:
+        return {value for value in activity_ids if value in self.have}
+
+    def insert_run_weather(self, row: dict[str, object], session: dict[str, object]) -> None:
+        if self.fail:
+            raise SyncError("Supabase request failed (500): boom")
+        self.inserted.append(row)
+
+
+def _starts(*ids: int) -> list:
+    return outdoor_run_starts([_outdoor(activityId=value) for value in ids])
+
+
+class StoreRunWeatherTests(unittest.TestCase):
+    SESSION = {"access_token": "t"}
+
+    def test_stores_a_row_for_a_run_the_archive_covers(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1"})
+        urls: list[str] = []
+
+        def fetch(url: str) -> object:
+            urls.append(url)
+            return _archive("2026-10-20", {7: {"temperature_2m": 12.0}})
+
+        result = store_run_weather(_starts(1), supabase, self.SESSION, fetch=fetch)
+
+        self.assertEqual((result.stored, result.not_yet, result.failed), (1, 0, 0))
+        self.assertEqual(len(urls), 1)
+        (row,) = supabase.inserted
+        self.assertEqual(row["fitness_activity_id"], "uuid-1")
+        self.assertEqual(row["temperature_c"], 12.0)
+
+    def test_a_run_too_recent_for_the_archive_gets_its_row_on_a_later_sync(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1"})
+
+        first = store_run_weather(
+            _starts(1), supabase, self.SESSION, fetch=lambda url: _archive("2026-10-20")
+        )
+        self.assertEqual((first.stored, first.not_yet), (0, 1))
+        self.assertEqual(supabase.inserted, [])
+
+        later = store_run_weather(
+            _starts(1), supabase, self.SESSION, fetch=lambda url: _archive("2026-10-20", {7: {}})
+        )
+        self.assertEqual((later.stored, later.not_yet), (1, 0))
+        self.assertEqual(len(supabase.inserted), 1)
+
+    def test_a_run_that_already_has_weather_is_not_asked_about_again(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1", "2": "uuid-2"}, have={"uuid-1"})
+        urls: list[str] = []
+
+        def fetch(url: str) -> object:
+            urls.append(url)
+            return _archive("2026-10-20", {7: {}})
+
+        result = store_run_weather(_starts(1, 2), supabase, self.SESSION, fetch=fetch)
+
+        self.assertEqual(result.stored, 1)
+        self.assertEqual(len(urls), 1)
+        self.assertEqual(supabase.inserted[0]["fitness_activity_id"], "uuid-2")
+
+    def test_a_run_not_stored_yet_is_skipped(self) -> None:
+        supabase = _WeatherSupabase({})
+
+        result = store_run_weather(
+            _starts(1), supabase, self.SESSION, fetch=lambda url: self.fail("no request expected")
+        )
+
+        self.assertEqual(result.stored, 0)
+
+    def test_survives_one_failure_and_stops_after_several_in_a_row(self) -> None:
+        supabase = _WeatherSupabase({str(n): f"uuid-{n}" for n in range(1, 8)})
+        calls: list[str] = []
+
+        def fetch(url: str) -> object:
+            calls.append(url)
+            if len(calls) == 1:
+                return _archive("2026-10-20", {7: {}})
+            raise URLError("network down")
+
+        with patch("sys.stderr"):
+            result = store_run_weather(_starts(*range(1, 8)), supabase, self.SESSION, fetch=fetch)
+
+        self.assertEqual((result.stored, result.failed, result.stopped_early), (1, 3, True))
+        self.assertEqual(len(calls), 4)
+
+    def test_no_runs_makes_no_requests(self) -> None:
+        supabase = _WeatherSupabase({})
+        supabase.fitness_activity_ids = lambda *args: self.fail("no lookup expected")  # type: ignore[method-assign]
+
+        self.assertEqual(store_run_weather([], supabase, self.SESSION).stored, 0)
+
+
+class CoordinateNeverLeavesTests(unittest.TestCase):
+    """The start point is used for the request and then gone (docs/adr/0001)."""
+
+    LEAKS = ("51.48", "0.12", "51.4812", "0.1234")
+
+    def _assert_clean(self, text: str, where: str) -> None:
+        for leak in self.LEAKS:
+            self.assertNotIn(leak, text, f"{leak} found in {where}")
+
+    def test_no_stored_row_holds_the_coordinate(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1"})
+
+        store_run_weather(
+            _starts(1),
+            supabase,
+            {"access_token": "t"},
+            fetch=lambda url: _archive("2026-10-20", {7: {}}),
+        )
+
+        self._assert_clean(json.dumps(supabase.inserted), "the stored row")
+        # The rounded form is the request's, not a stored one either.
+        self.assertNotIn("51.5", json.dumps(supabase.inserted))
+
+    def test_no_output_holds_the_coordinate_even_when_the_error_carries_the_url(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1", "2": "uuid-2"})
+
+        def fetch(url: str) -> object:
+            # Library errors can quote the request, so the worker must not print them.
+            raise RuntimeError(f"failed fetching {url}")
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            store_run_weather(_starts(1, 2), supabase, {"access_token": "t"}, fetch=fetch)
+            print(_starts(1, 2))
+
+        self.assertTrue(err.getvalue())
+        for text, where in ((out.getvalue(), "stdout"), (err.getvalue(), "stderr")):
+            self._assert_clean(text, where)
+            self.assertNotIn("51.5", text, where)
+
+    def test_a_failed_http_request_is_reported_by_status_only(self) -> None:
+        supabase = _WeatherSupabase({"1": "uuid-1"})
+
+        def fetch(url: str) -> object:
+            raise HTTPError(url, 429, "Too Many Requests", {}, None)  # type: ignore[arg-type]
+
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            store_run_weather(_starts(1), supabase, {"access_token": "t"}, fetch=fetch)
+
+        self.assertIn("HTTP 429", err.getvalue())
+        self.assertNotIn("latitude", err.getvalue())
 
 
 if __name__ == "__main__":
