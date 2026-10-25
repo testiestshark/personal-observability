@@ -158,8 +158,9 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
         <h3 className="truncate text-sm font-medium text-foreground">
           {activity.name ?? formatActivityType(activity.type)}
         </h3>
-        <p className="mt-1 text-xs text-muted-foreground">{formatActivitySummary(activity)}</p>
-        {weather ? <p className="mt-0.5 text-xs text-muted-foreground">{weather}</p> : null}
+        <p className="mt-1 text-xs text-muted-foreground">
+          {[formatActivitySummary(activity), weather].filter(Boolean).join(" · ")}
+        </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
