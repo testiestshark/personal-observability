@@ -34,7 +34,9 @@ import {
   type FitnessActivity,
   getDailyHealth,
   getFitnessActivitiesForDay,
+  getWorkerRun,
 } from "@/lib/health/health.functions";
+import { formatStale, isWorkerStale } from "@/lib/sync/freshness";
 import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
 
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
@@ -60,21 +62,27 @@ export const Route = createFileRoute("/")({
   }).parse,
   loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
   loader: async ({ deps: { day } }) => {
-    const [health, activities, making] = await Promise.all([
+    const [health, activities, making, garminRun] = await Promise.all([
       getDailyHealth({ data: { day } }),
       getFitnessActivitiesForDay({ data: { day } }),
       getGithubMaking({ data: { day } }),
+      getWorkerRun({ data: { source: "garmin" } }),
     ]);
-    return { day, health, activities, making };
+    return { day, health, activities, making, garminRun };
   },
   component: Today,
 });
 
 function Today() {
-  const { health, activities, making, day: viewedDay } = Route.useLoaderData();
+  const { health, activities, making, garminRun, day: viewedDay } = Route.useLoaderData();
   const today = currentLondonDay();
   const isToday = viewedDay === today;
-  const syncLabel = formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
+  const now = new Date();
+  const garminStale = isWorkerStale(garminRun, now);
+  // Until the watch nudge ships, a healthy pill keeps showing the Device sync time.
+  const syncLabel = garminStale
+    ? formatStale(garminRun, now)
+    : formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
 
   return (
     <>
@@ -96,7 +104,13 @@ function Today() {
               <h2 className="mt-1 font-display text-xl text-foreground">Health</h2>
             </div>
             {syncLabel ? (
-              <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
+              <span
+                className={
+                  garminStale
+                    ? "rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] text-destructive"
+                    : "rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground"
+                }
+              >
                 {syncLabel}
               </span>
             ) : null}

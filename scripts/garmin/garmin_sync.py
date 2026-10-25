@@ -876,6 +876,20 @@ class SupabaseSession:
             extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
         )
 
+    def record_sync_run(self, succeeded_at: str, session: dict[str, Any]) -> None:
+        """Stamp this owner's Garmin heartbeat; only a fully successful run calls this."""
+        user = session.get("user")
+        user_id = user.get("id") if isinstance(user, dict) else None
+        if not isinstance(user_id, str) or not user_id:
+            raise SyncError("The cached app session has no user id. Run setup again.")
+        self._request(
+            "POST",
+            "/rest/v1/sync_runs?" + urlencode({"on_conflict": "user_id,source"}),
+            {"user_id": user_id, "source": SOURCE, "last_succeeded_at": succeeded_at},
+            access_token=self._access_token(session),
+            extra_headers={"Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+
     def garmin_activities(
         self, session: dict[str, Any], external_ids: list[str] | None = None
     ) -> list[dict[str, Any]]:
@@ -1187,6 +1201,11 @@ def sync(days: int) -> None:
         )
     except Exception as error:
         print(f"Warning: run weather was skipped: {_describe_failure(error)}", file=sys.stderr)
+
+    # Reached only when the health and activity writes succeeded: a failed run
+    # must leave the heartbeat old, and a run that found nothing new must still
+    # advance it.
+    supabase.record_sync_run(synced_at, session)
 
 
 def backfill_splits(limit: int | None) -> None:
