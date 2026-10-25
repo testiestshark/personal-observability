@@ -1,10 +1,10 @@
+const HOUR_MS = 60 * 60 * 1000;
+
 /** How long since a Worker run before a source counts as Stale. See CONTEXT.md. */
-export const WORKER_STALE_THRESHOLD_MS = 3 * 60 * 60 * 1000;
+export const WORKER_STALE_THRESHOLD_MS = 3 * HOUR_MS;
 
 /** How long since a Device sync before the owner is nudged to open the Garmin app. */
-export const DEVICE_SYNC_THRESHOLD_MS = 12 * 60 * 60 * 1000;
-
-const HOUR_MS = 60 * 60 * 1000;
+export const DEVICE_SYNC_THRESHOLD_MS = 12 * HOUR_MS;
 
 function ageMs(timestamp: string | null | undefined, now: Date): number | null {
   if (!timestamp) return null;
@@ -31,7 +31,7 @@ export function isDeviceSyncOld(deviceSyncAt: string | null | undefined, now: Da
 /** The pill text for a Stale source: "Stale · last ran 6h ago", or that it has never run. */
 export function formatStale(lastRunAt: string | null | undefined, now: Date): string {
   const age = ageMs(lastRunAt, now);
-  if (age === null) return "Stale · never synced";
+  if (age === null) return "Stale · never ran";
   const hours = Math.floor(age / HOUR_MS);
   return hours < 24
     ? `Stale · last ran ${hours}h ago`

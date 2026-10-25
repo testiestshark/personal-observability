@@ -60,7 +60,7 @@ describe("formatStale", () => {
     expect(formatStale(hoursAgo(49), now)).toBe("Stale · last ran 2d ago");
   });
 
-  it("says never synced without a heartbeat", () => {
-    expect(formatStale(null, now)).toBe("Stale · never synced");
+  it("says never ran without a heartbeat", () => {
+    expect(formatStale(null, now)).toBe("Stale · never ran");
   });
 });
