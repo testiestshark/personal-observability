@@ -76,3 +76,30 @@ export function runWeatherTiles(weather: RunWeather | null): { label: string; va
     },
   ];
 }
+
+/**
+ * The one-line weather under a run in the day's activity list: temperature,
+ * wind, and rain only when there was some. Null when the run has no weather, so
+ * the card adds no line.
+ */
+export function runWeatherPreview(weather: RunWeather | null): string | null {
+  if (!weather) return null;
+  const parts = [degrees(weather.temperatureC), `${Math.round(weather.windSpeedMph)} mph wind`];
+  if (weather.precipitationMm > 0) {
+    const rain =
+      weather.precipitationMm < 0.05
+        ? "<0.1"
+        : weather.precipitationMm.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+    parts.push(`${rain} mm rain`);
+  }
+  return parts.join(" · ");
+}
+
+/** Attaches each activity's weather from rows keyed by activity id; an activity without a row gets null. */
+export function withRunWeather<T extends { id: string }>(
+  activities: T[],
+  rows: (RunWeatherRow & { fitness_activity_id: string })[],
+): (T & { weather: RunWeather | null })[] {
+  const weatherByActivityId = new Map(rows.map((r) => [r.fitness_activity_id, toRunWeather(r)]));
+  return activities.map((a) => ({ ...a, weather: weatherByActivityId.get(a.id) ?? null }));
+}

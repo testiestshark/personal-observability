@@ -6,6 +6,7 @@ import {
   RUN_WEATHER_COLUMNS,
   type RunWeather,
   toRunWeather,
+  withRunWeather,
   type WeatherDatabase,
 } from "./run-weather";
 
@@ -41,6 +42,8 @@ export type FitnessActivity = {
   averageHeartRateBpm: number | null;
   totalSets: number | null;
   totalReps: number | null;
+  /** Set by the day's list for a Garmin run with weather; absent otherwise. */
+  weather?: RunWeather | null;
 };
 
 /** One set of an exercise. Hevy stores weights in kilograms and distances in metres. */
@@ -218,7 +221,24 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
       .order("started_at", { ascending: false });
 
     if (error) throw new Error(error.message);
-    return (rows ?? []).map(toFitnessActivity);
+    const activities = (rows ?? []).map(toFitnessActivity);
+
+    // Weather is an extra on the card, like the detail page's: a failed read
+    // leaves the list as it was. Only Garmin rows can have any.
+    const garminIds = activities.filter((a) => a.source === "garmin").map((a) => a.id);
+    if (garminIds.length === 0) return activities;
+    const weatherDb = supabase as unknown as SupabaseClient<WeatherDatabase, "weather">;
+    const { data: weatherRows, error: weatherError } = await weatherDb
+      .schema("weather")
+      .from("run_weather")
+      .select(`fitness_activity_id, ${RUN_WEATHER_COLUMNS}`)
+      .eq("user_id", userId)
+      .in("fitness_activity_id", garminIds);
+    if (weatherError) {
+      console.error("Could not load weather for day", data.day, weatherError.message);
+      return activities;
+    }
+    return withRunWeather(activities, weatherRows ?? []);
   });
 
 /**

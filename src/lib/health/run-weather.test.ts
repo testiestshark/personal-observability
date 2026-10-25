@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type RunWeather, runWeatherTiles } from "./run-weather";
+import { type RunWeather, runWeatherPreview, runWeatherTiles, withRunWeather } from "./run-weather";
 
 const weather: RunWeather = {
   temperatureC: 14.26,
@@ -32,5 +32,44 @@ describe("runWeatherTiles", () => {
 
   it("shows nothing for a run with no weather", () => {
     expect(runWeatherTiles(null)).toEqual([]);
+  });
+});
+
+describe("runWeatherPreview", () => {
+  it("shows temperature and wind, and no rain when it did not rain", () => {
+    expect(runWeatherPreview(weather)).toBe("14°C · 9 mph wind");
+  });
+
+  it("adds rain when the precipitation is above zero", () => {
+    expect(runWeatherPreview({ ...weather, precipitationMm: 0.24 })).toBe(
+      "14°C · 9 mph wind · 0.2 mm rain",
+    );
+  });
+
+  it("does not round a drizzle down to no rain", () => {
+    expect(runWeatherPreview({ ...weather, precipitationMm: 0.04 })).toBe(
+      "14°C · 9 mph wind · <0.1 mm rain",
+    );
+  });
+
+  it("shows nothing for a run with no weather", () => {
+    expect(runWeatherPreview(null)).toBeNull();
+  });
+});
+
+describe("withRunWeather", () => {
+  const row = {
+    fitness_activity_id: "a",
+    temperature_c: 10,
+    apparent_temperature_c: 8,
+    relative_humidity_percent: 70,
+    wind_speed_mph: 5,
+    precipitation_mm: 0,
+  };
+
+  it("gives each activity its own weather, and null when it has none", () => {
+    const result = withRunWeather([{ id: "a" }, { id: "b" }], [row]);
+    expect(result[0]?.weather?.temperatureC).toBe(10);
+    expect(result[1]?.weather).toBeNull();
   });
 });
