@@ -166,9 +166,8 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
           {linked ? <ChevronRight className="h-4 w-4 text-muted-foreground" aria-hidden /> : null}
         </div>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {[formatActivitySummary(activity), weather].filter(Boolean).join(" · ")}
-      </p>
+      <p className="mt-1 text-xs text-muted-foreground">{formatActivitySummary(activity)}</p>
+      {weather ? <p className="mt-0.5 text-xs text-muted-foreground">{weather}</p> : null}
     </>
   );
 
