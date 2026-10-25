@@ -1,5 +1,13 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+
+import {
+  RUN_WEATHER_COLUMNS,
+  type RunWeather,
+  toRunWeather,
+  type WeatherDatabase,
+} from "./run-weather";
 
 export const activityIdSchema = z.string().uuid();
 
@@ -113,6 +121,8 @@ export type GarminActivityDetail = FitnessActivity & {
   /** Garmin's key, such as "AEROBIC_BASE"; humanised for display. */
   trainingEffectLabel: string | null;
   laps: GarminLap[];
+  /** The weather for the hour the run started in; null for an indoor run, or one the archive does not cover yet. */
+  weather: RunWeather | null;
 };
 
 /** One activity for its detail page; `source` says which shape it is. */
@@ -250,6 +260,20 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
       // readable without them rather than turning it into an error page.
       if (lapsError) console.error("Could not load laps for activity", data.id, lapsError.message);
 
+      // Weather lives in its own schema, and is the same kind of extra as the
+      // laps: a schema not yet exposed on this database leaves the page as it was.
+      const weatherDb = supabase as unknown as SupabaseClient<WeatherDatabase, "weather">;
+      const { data: weatherRow, error: weatherError } = await weatherDb
+        .schema("weather")
+        .from("run_weather")
+        .select(RUN_WEATHER_COLUMNS)
+        .eq("user_id", userId)
+        .eq("fitness_activity_id", data.id)
+        .maybeSingle();
+      if (weatherError) {
+        console.error("Could not load weather for activity", data.id, weatherError.message);
+      }
+
       return {
         ...activity,
         source: "garmin",
@@ -278,6 +302,7 @@ export const getFitnessActivity = createServerFn({ method: "GET" })
           elevationGainMeters: lap.elevation_gain_meters,
           elevationLossMeters: lap.elevation_loss_meters,
         })),
+        weather: weatherRow ? toRunWeather(weatherRow) : null,
       };
     }
 
