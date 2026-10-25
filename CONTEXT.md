@@ -14,6 +14,10 @@ _Avoid_: Session, exercise (for the whole session)
 **Run**:
 A running fitness activity, recorded by Garmin.
 
+**Run weather**:
+The conditions during an outdoor foot activity, averaged over its duration, from Open-Meteo's record of what the weather actually was for the area the activity took place in. It is an area reading, not a measurement at the runner's position, and never a forecast. An indoor activity has none, and a recent activity has none yet.
+_Avoid_: Forecast, conditions (for the stored values)
+
 **Workout**:
 A strength-training fitness activity, recorded in Hevy. Strength training is only ever recorded in Hevy.
 _Avoid_: Using "workout" for a Garmin run or other non-Hevy activity
