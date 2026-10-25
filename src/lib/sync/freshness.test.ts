@@ -6,6 +6,7 @@ import {
   formatStale,
   isDeviceSyncOld,
   isWorkerStale,
+  staleWorkers,
 } from "./freshness";
 
 const HOUR = 60 * 60 * 1000;
@@ -62,5 +63,29 @@ describe("formatStale", () => {
 
   it("says never ran without a heartbeat", () => {
     expect(formatStale(null, now)).toBe("Stale · never ran");
+  });
+});
+
+describe("staleWorkers", () => {
+  const recent = hoursAgo(1);
+  const old = hoursAgo(5);
+
+  it("is empty when every worker ran recently", () => {
+    expect(staleWorkers({ garmin: recent, hevy: recent, github: recent }, now)).toEqual([]);
+  });
+
+  it("names each stale worker, in a fixed order", () => {
+    expect(staleWorkers({ garmin: old, hevy: recent, github: null }, now)).toEqual([
+      "Garmin",
+      "GitHub",
+    ]);
+  });
+
+  it("lists all three when all are stale", () => {
+    expect(staleWorkers({ garmin: old, hevy: old, github: old }, now)).toEqual([
+      "Garmin",
+      "Hevy",
+      "GitHub",
+    ]);
   });
 });
