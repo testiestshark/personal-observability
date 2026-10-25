@@ -172,7 +172,19 @@ Each outdoor run, walk or hike gets the weather for the hour it started in, stor
   complete value for the hour yet, no row is written and the next sync tries again, for as long as
   the run is in the sync window (seven days by default). Three failures in a row stop the step for
   that sync. A failure is a warning and never fails the sync.
-- **No backfill yet.** Runs older than the sync window have no weather until one is added.
+- **Backfill (one-off).** Runs older than the sync window get weather from a separate command:
+
+  ```powershell
+  bun run garmin:backfill-weather              # local Supabase
+  bun run garmin:backfill-weather:live         # hosted Supabase
+  bun run garmin:backfill-weather --limit 50   # look up at most 50 runs, newest first
+  ```
+
+  Start points are not stored, so it reads Garmin's activity list again, 30 days per request and
+  one second apart, and looks up only runs that have no weather row; treadmill and other indoor
+  activities are skipped. It is safe to repeat: runs with weather are not asked about again, a
+  failed lookup or a run the archive does not cover yet is a warning and is retried next time,
+  and three failures in a row stop the run. The coordinate follows the same rule as the sync.
 
 **Exposing the schema.** The API serves only the schemas it is told about. Locally
 `supabase/config.toml` lists `weather`; **on hosted it is a manual step**: Dashboard > Settings >

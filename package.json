@@ -26,6 +26,8 @@
     "garmin:status:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync status",
     "garmin:backfill-splits": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync backfill-splits",
     "garmin:backfill-splits:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync backfill-splits",
+    "garmin:backfill-weather": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync backfill-weather",
+    "garmin:backfill-weather:live": "docker compose --env-file .env.production -f docker-compose.garmin.yml -f docker-compose.garmin.live.yml run --rm garmin-sync backfill-weather",
     "garmin:test": "docker compose --env-file .env.local -f docker-compose.garmin.yml run --rm garmin-sync test",
     "verify": "bun run lint && bun run build && bun run typecheck && bun run test"
   },
