@@ -16,7 +16,7 @@ import stat
 import sys
 import time
 import unittest
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -39,6 +39,22 @@ SPLITS_PAUSE_SECONDS = 1.0
 MAX_CONSECUTIVE_SPLIT_FAILURES = 5
 ACTIVITIES_PAGE_SIZE = 500
 FOOT_ACTIVITY_PATTERN = re.compile(r"running|walking|hiking")
+# "treadmill_running" matches the foot pattern but has no outdoor weather.
+INDOOR_ACTIVITY_PATTERN = re.compile(r"treadmill|indoor|virtual")
+OPEN_METEO_ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+WEATHER_SOURCE = "open-meteo-archive"
+WEATHER_VARIABLES = (
+    "temperature_2m",
+    "apparent_temperature",
+    "relative_humidity_2m",
+    "wind_speed_10m",
+    "precipitation",
+)
+# Open-Meteo's grid is coarser than this, and a one-decimal area (about 11 km)
+# cannot be traced back to a start position (docs/adr/0001).
+WEATHER_COORDINATE_DECIMALS = 1
+# Weather is an extra: a few failures in a row mean it is down or rate-limiting.
+MAX_CONSECUTIVE_WEATHER_FAILURES = 3
 
 
 class SyncError(RuntimeError):
@@ -437,6 +453,211 @@ def store_splits(
     return result
 
 
+@dataclass(frozen=True)
+class RunStart:
+    """Where and when an outdoor run began, rounded, for one weather request.
+
+    The coordinate is kept out of repr so that printing or logging one cannot
+    leak it. It is used in memory for the request and never stored.
+    """
+
+    external_id: str
+    started_at: datetime
+    latitude: float = field(repr=False)
+    longitude: float = field(repr=False)
+
+
+def _coordinate(value: Any, limit: float) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    if value != value or abs(value) > limit:
+        return None
+    return float(value)
+
+
+def outdoor_run_starts(rows: Any) -> list[RunStart]:
+    """Start points of outdoor foot activities, rounded for the weather request.
+
+    Indoor activities are told apart by what Garmin leaves out: a treadmill run
+    has no start coordinate at all, and a 0,0 one is a watch without a fix. The
+    type key is a second guard. Anything else is skipped rather than guessed.
+    """
+    if not isinstance(rows, list):
+        return []
+    starts: dict[str, RunStart] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        activity_id = item.get("activityId")
+        if isinstance(activity_id, bool) or not isinstance(activity_id, (int, str)):
+            continue
+        external_id = str(activity_id).strip()
+        if not is_garmin_activity_id(external_id):
+            continue
+
+        activity_type = item.get("activityType")
+        if not isinstance(activity_type, dict):
+            activity_type = item.get("activityTypeDTO")
+        type_key = _text(activity_type.get("typeKey")) if isinstance(activity_type, dict) else None
+        if not type_key or not is_foot_activity(type_key):
+            continue
+        if INDOOR_ACTIVITY_PATTERN.search(type_key):
+            continue
+
+        latitude = _coordinate(item.get("startLatitude"), 90)
+        longitude = _coordinate(item.get("startLongitude"), 180)
+        if latitude is None or longitude is None or (latitude == 0 and longitude == 0):
+            continue
+
+        started_at = _provider_utc_timestamp(item.get("startTimeGMT"))
+        if not started_at:
+            continue
+        starts[external_id] = RunStart(
+            external_id=external_id,
+            started_at=datetime.fromisoformat(started_at),
+            latitude=round(latitude, WEATHER_COORDINATE_DECIMALS),
+            longitude=round(longitude, WEATHER_COORDINATE_DECIMALS),
+        )
+    return sorted(starts.values(), key=lambda start: start.started_at)
+
+
+def weather_request_url(start: RunStart) -> str:
+    """The archive request for the UTC day a run started in, in UTC and mph."""
+    day = start.started_at.astimezone(timezone.utc).date().isoformat()
+    return OPEN_METEO_ARCHIVE_URL + "?" + urlencode(
+        {
+            "latitude": start.latitude,
+            "longitude": start.longitude,
+            "start_date": day,
+            "end_date": day,
+            "hourly": ",".join(WEATHER_VARIABLES),
+            "wind_speed_unit": "mph",
+            "timezone": "UTC",
+        }
+    )
+
+
+def map_run_weather(
+    payload: Any, started_at: datetime, fetched_at: str
+) -> dict[str, Any] | None:
+    """The weather row for the hour a run started in, or None if not available yet.
+
+    The hour is found in UTC (the request asks for UTC), so it does not matter
+    whether the clocks were on BST or GMT: 00:30 and 01:30 UTC on the night they
+    go back are different hours, as they are in the archive. None means the
+    archive has no complete value for that hour (it can lag real time), which is
+    retried on a later sync rather than stored half-empty.
+    """
+    hourly = payload.get("hourly") if isinstance(payload, dict) else None
+    if not isinstance(hourly, dict) or not isinstance(hourly.get("time"), list):
+        return None
+    hour = started_at.astimezone(timezone.utc).replace(
+        minute=0, second=0, microsecond=0
+    )
+    try:
+        index = hourly["time"].index(hour.strftime("%Y-%m-%dT%H:%M"))
+    except ValueError:
+        return None
+
+    values: dict[str, float] = {}
+    for variable in WEATHER_VARIABLES:
+        series = hourly.get(variable)
+        value = series[index] if isinstance(series, list) and index < len(series) else None
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+            return None
+        values[variable] = float(value)
+    if not 0 <= values["relative_humidity_2m"] <= 100:
+        return None
+    if values["wind_speed_10m"] < 0 or values["precipitation"] < 0:
+        return None
+
+    return {
+        "hour_start": hour.isoformat().replace("+00:00", "Z"),
+        "temperature_c": values["temperature_2m"],
+        "apparent_temperature_c": values["apparent_temperature"],
+        "relative_humidity_percent": values["relative_humidity_2m"],
+        "wind_speed_mph": values["wind_speed_10m"],
+        "precipitation_mm": values["precipitation"],
+        "source": WEATHER_SOURCE,
+        "fetched_at": fetched_at,
+    }
+
+
+def fetch_open_meteo(url: str) -> Any:
+    with urlopen(url, timeout=30) as response:
+        return json.loads(response.read())
+
+
+def _describe_failure(error: Exception) -> str:
+    """A failure in words that cannot carry the request URL, and so the coordinate."""
+    if isinstance(error, HTTPError):
+        return f"HTTP {error.code}"
+    return type(error).__name__
+
+
+@dataclass
+class WeatherResult:
+    """How many runs got weather, how many are not covered yet, how many failed."""
+
+    stored: int = 0
+    not_yet: int = 0
+    failed: int = 0
+    stopped_early: bool = False
+
+
+def store_run_weather(
+    starts: list[RunStart],
+    supabase: Any,
+    session: dict[str, Any],
+    fetch: Any = fetch_open_meteo,
+    max_consecutive_failures: int = MAX_CONSECUTIVE_WEATHER_FAILURES,
+) -> WeatherResult:
+    """Fetch and store weather once for each run that has none.
+
+    A run already holding weather is not asked about again (the value is not
+    revised). One the archive does not cover yet is left without a row, so a
+    later sync finds it again. Failures are warnings, as for splits. Only the
+    run's Garmin id is ever printed.
+    """
+    result = WeatherResult()
+    if not starts:
+        return result
+
+    activity_ids = supabase.fitness_activity_ids([start.external_id for start in starts], session)
+    have = supabase.run_weather_activity_ids(list(activity_ids.values()), session)
+    consecutive_failures = 0
+    for start in starts:
+        activity_id = activity_ids.get(start.external_id)
+        if activity_id is None or activity_id in have:
+            continue
+        try:
+            payload = fetch(weather_request_url(start))
+            row = map_run_weather(payload, start.started_at, datetime.now(timezone.utc).isoformat())
+            consecutive_failures = 0
+            if row is None:
+                result.not_yet += 1
+                continue
+            supabase.insert_run_weather({**row, "fitness_activity_id": activity_id}, session)
+            result.stored += 1
+        except Exception as error:  # a weather failure must not fail a sync that has stored
+            result.failed += 1
+            consecutive_failures += 1
+            print(
+                f"Warning: weather for Garmin activity {start.external_id} was unavailable: "
+                f"{_describe_failure(error)}",
+                file=sys.stderr,
+            )
+            if consecutive_failures >= max_consecutive_failures:
+                result.stopped_early = True
+                print(
+                    f"Warning: {consecutive_failures} weather lookups failed in a row; "
+                    "stopping. The remaining runs are retried on the next sync.",
+                    file=sys.stderr,
+                )
+                break
+    return result
+
+
 def normalize_daily_health(
     rows: Any,
     user_id: str,
@@ -703,6 +924,74 @@ class SupabaseSession:
                 return rows
             offset += ACTIVITIES_PAGE_SIZE
 
+    def fitness_activity_ids(
+        self, external_ids: list[str], session: dict[str, Any]
+    ) -> dict[str, str]:
+        """Row ids of stored Garmin activities, by provider id."""
+        external_ids = [value for value in external_ids if is_garmin_activity_id(value)]
+        if not external_ids:
+            return {}
+        page = self._request(
+            "GET",
+            "/rest/v1/fitness_activities?"
+            + urlencode(
+                {
+                    "select": "id,external_id",
+                    "source": "eq.garmin",
+                    "external_id": f"in.({','.join(external_ids)})",
+                }
+            ),
+            access_token=self._access_token(session),
+        )
+        if not isinstance(page, list):
+            raise SyncError("Supabase returned an unexpected activities response.")
+        return {
+            item["external_id"]: item["id"]
+            for item in page
+            if isinstance(item, dict)
+            and isinstance(item.get("external_id"), str)
+            and isinstance(item.get("id"), str)
+        }
+
+    def run_weather_activity_ids(
+        self, activity_ids: list[str], session: dict[str, Any]
+    ) -> set[str]:
+        """Which of these activities already have weather stored."""
+        if not activity_ids:
+            return set()
+        page = self._request(
+            "GET",
+            "/rest/v1/run_weather?"
+            + urlencode(
+                {
+                    "select": "fitness_activity_id",
+                    "fitness_activity_id": f"in.({','.join(activity_ids)})",
+                }
+            ),
+            access_token=self._access_token(session),
+            extra_headers={"Accept-Profile": "weather"},
+        )
+        if not isinstance(page, list):
+            raise SyncError("Supabase returned an unexpected weather response.")
+        return {
+            item["fitness_activity_id"]
+            for item in page
+            if isinstance(item, dict) and isinstance(item.get("fitness_activity_id"), str)
+        }
+
+    def insert_run_weather(self, row: dict[str, Any], session: dict[str, Any]) -> None:
+        """Store one run's weather; a run that already has some is left alone."""
+        self._request(
+            "POST",
+            "/rest/v1/run_weather?" + urlencode({"on_conflict": "fitness_activity_id"}),
+            row,
+            access_token=self._access_token(session),
+            extra_headers={
+                "Content-Profile": "weather",
+                "Prefer": "resolution=ignore-duplicates,return=minimal",
+            },
+        )
+
     def replace_laps(
         self, external_id: str, laps: list[dict[str, Any]], session: dict[str, Any]
     ) -> None:
@@ -886,6 +1175,18 @@ def sync(days: int) -> None:
     if pending:
         splits = store_splits(garmin, supabase, session, pending)
         print(f"Stored splits for {splits.stored} of {len(pending)} activity/activities.")
+
+    # The summaries just fetched carry each run's start point, so weather costs
+    # no Garmin request. A failure here is a warning: the run is retried while
+    # it is still in the window.
+    try:
+        weather = store_run_weather(outdoor_run_starts(raw_activities), supabase, session)
+        print(
+            f"Stored weather for {weather.stored} run(s); "
+            f"{weather.not_yet} not in Open-Meteo's archive yet."
+        )
+    except Exception as error:
+        print(f"Warning: run weather was skipped: {_describe_failure(error)}", file=sys.stderr)
 
 
 def backfill_splits(limit: int | None) -> None:
