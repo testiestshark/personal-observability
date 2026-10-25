@@ -224,6 +224,9 @@ function hostedFailure(action: string, result: RunResult): LocalError {
   return new LocalError(`Could not ${action} from hosted Supabase.\n${hint}`);
 }
 
+/** The schemas whose data the pull copies. `weather` holds run weather (#131). */
+const PULLED_SCHEMAS = ["public", "weather"];
+
 /** Replace all local data with a copy of the hosted data. */
 export async function pullHostedData(main: string, email: string) {
   // The hosted link (supabase/.temp) is gitignored and exists only in the main
@@ -253,7 +256,7 @@ export async function pullHostedData(main: string, email: string) {
       ...hosted,
       "--data-only",
       "--schema",
-      "public",
+      PULLED_SCHEMAS.join(","),
       "-f",
       file,
     ]);
@@ -265,7 +268,7 @@ export async function pullHostedData(main: string, email: string) {
     // every row it owns.
     const clear = `delete from auth.users where email = '${email}' and id <> '${hostedId}';
       do $$ declare t text; begin
-      for t in select format('%I.%I', schemaname, tablename) from pg_tables where schemaname = 'public'
+      for t in select format('%I.%I', schemaname, tablename) from pg_tables where schemaname in (${PULLED_SCHEMAS.map((name) => `'${name}'`).join(", ")})
       loop execute 'truncate table ' || t || ' cascade'; end loop; end $$;`;
     const load = psql(`${clear}\n${readFileSync(file, "utf8")}`);
     if (!load.ok) {

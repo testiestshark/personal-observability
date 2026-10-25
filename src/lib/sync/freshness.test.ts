@@ -7,6 +7,7 @@ import {
   isDeviceSyncOld,
   isWorkerStale,
   oldestWorkerRun,
+  staleWorkers,
 } from "./freshness";
 
 const HOUR = 60 * 60 * 1000;
@@ -82,5 +83,29 @@ describe("oldestWorkerRun", () => {
   it("makes the card stale when only the older source is past the threshold", () => {
     expect(isWorkerStale(oldestWorkerRun([hoursAgo(1), hoursAgo(4)]), now)).toBe(true);
     expect(isWorkerStale(oldestWorkerRun([hoursAgo(1), hoursAgo(2)]), now)).toBe(false);
+  });
+});
+
+describe("staleWorkers", () => {
+  const recent = hoursAgo(1);
+  const old = hoursAgo(5);
+
+  it("is empty when every worker ran recently", () => {
+    expect(staleWorkers({ garmin: recent, hevy: recent, github: recent }, now)).toEqual([]);
+  });
+
+  it("names each stale worker, in a fixed order", () => {
+    expect(staleWorkers({ garmin: old, hevy: recent, github: null }, now)).toEqual([
+      "Garmin",
+      "GitHub",
+    ]);
+  });
+
+  it("lists all three when all are stale", () => {
+    expect(staleWorkers({ garmin: old, hevy: old, github: old }, now)).toEqual([
+      "Garmin",
+      "Hevy",
+      "GitHub",
+    ]);
   });
 });
