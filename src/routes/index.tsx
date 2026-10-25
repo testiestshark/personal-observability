@@ -38,7 +38,7 @@ import {
   getWorkerRun,
 } from "@/lib/health/health.functions";
 import { runWeatherPreview } from "@/lib/health/run-weather";
-import { formatStale, isWorkerStale, staleWorkers } from "@/lib/sync/freshness";
+import { formatStale, isWorkerStale, oldestWorkerRun, staleWorkers } from "@/lib/sync/freshness";
 import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
 
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
@@ -95,6 +95,9 @@ function Today() {
   const syncLabel = garminStale
     ? formatStale(garminRun, now)
     : formatSyncTime(health?.sourceSyncedAt ?? health?.syncedAt);
+  // The card combines two sources, so it is only as fresh as the older one.
+  const fitnessRun = oldestWorkerRun([garminRun, hevyRun]);
+  const fitnessStale = isWorkerStale(fitnessRun, now);
 
   return (
     <>
@@ -142,11 +145,22 @@ function Today() {
         <MakingCard making={making} day={viewedDay} workerRun={githubRun} now={now} />
 
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
-          <div>
-            <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
-              Hevy + Garmin
-            </p>
-            <h2 className="mt-1 font-display text-xl text-foreground">Fitness activities</h2>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="text-[11px] tracking-[0.16em] uppercase text-muted-foreground">
+                Hevy + Garmin
+              </p>
+              <h2 className="mt-1 font-display text-xl text-foreground">Fitness activities</h2>
+            </div>
+            <span
+              className={
+                fitnessStale
+                  ? "rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] text-destructive"
+                  : "rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground"
+              }
+            >
+              {fitnessStale ? formatStale(fitnessRun, now) : formatSyncTime(fitnessRun)}
+            </span>
           </div>
 
           {activities.length ? (
