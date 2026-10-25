@@ -23,6 +23,7 @@ import {
   workoutExercises,
   workoutHeader,
 } from "@/lib/health/workout";
+import { runWeatherTiles } from "@/lib/health/run-weather";
 
 /**
  * The left rule's colour for each superset colour index: one class per colour
@@ -161,13 +162,18 @@ function GarminActivity({ activity }: { activity: GarminActivityDetail }) {
   const header = garminActivityHeader(activity);
   const splits = garminSplits(activity);
   const sections = garminActivitySections(activity);
+  const weatherTiles = runWeatherTiles(activity.weather);
 
   return (
     <>
       <BackToDay day={header.localDay} />
       <PageHeader eyebrow={`${header.dateLabel} · ${header.startTime}`} title={header.title} />
 
-      <StatGrid label="Activity totals" tiles={header.tiles} />
+      {weatherTiles.length > 0 && <StatGrid label="Weather" tiles={weatherTiles} />}
+
+      <div className={weatherTiles.length > 0 ? "mt-3" : undefined}>
+        <StatGrid label="Activity totals" tiles={header.tiles} />
+      </div>
 
       {splits.length > 0 && <SplitsSection rows={splits} />}
 

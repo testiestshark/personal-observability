@@ -46,6 +46,7 @@ const run: GarminActivityDetail = {
   trainingLoad: null,
   trainingEffectLabel: null,
   laps: [],
+  weather: null,
 };
 
 /** A run with every secondary metric the worker stores today (power and load stay null). */
