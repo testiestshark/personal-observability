@@ -37,3 +37,15 @@ export function formatStale(lastRunAt: string | null | undefined, now: Date): st
     ? `Stale · last ran ${hours}h ago`
     : `Stale · last ran ${Math.floor(hours / 24)}d ago`;
 }
+
+const WORKER_LABELS = { garmin: "Garmin", hevy: "Hevy", github: "GitHub" } as const;
+
+/** Display names of the sources whose Worker is Stale, for the strip on Today. Device sync never counts. */
+export function staleWorkers(
+  runs: Record<keyof typeof WORKER_LABELS, string | null | undefined>,
+  now: Date,
+): string[] {
+  return (Object.keys(WORKER_LABELS) as (keyof typeof WORKER_LABELS)[])
+    .filter((source) => isWorkerStale(runs[source], now))
+    .map((source) => WORKER_LABELS[source]);
+}

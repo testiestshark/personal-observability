@@ -15,6 +15,7 @@ import { z } from "zod";
 
 import { PageHeader } from "@/components/app-shell";
 import { MakingCard } from "@/components/making-card";
+import { StaleStrip } from "@/components/stale-strip";
 import { getGithubMaking } from "@/lib/github/github.functions";
 import {
   caloriesEatenNote,
@@ -37,7 +38,7 @@ import {
   getWorkerRun,
 } from "@/lib/health/health.functions";
 import { runWeatherPreview } from "@/lib/health/run-weather";
-import { formatStale, isWorkerStale } from "@/lib/sync/freshness";
+import { formatStale, isWorkerStale, staleWorkers } from "@/lib/sync/freshness";
 import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
 
 const daySchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])-([12]\d|3[01]|0[1-9])$/);
@@ -63,14 +64,15 @@ export const Route = createFileRoute("/")({
   }).parse,
   loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
   loader: async ({ deps: { day } }) => {
-    const [health, activities, making, garminRun, githubRun] = await Promise.all([
+    const [health, activities, making, garminRun, githubRun, hevyRun] = await Promise.all([
       getDailyHealth({ data: { day } }),
       getFitnessActivitiesForDay({ data: { day } }),
       getGithubMaking({ data: { day } }),
       getWorkerRun({ data: { source: "garmin" } }),
       getWorkerRun({ data: { source: "github" } }),
+      getWorkerRun({ data: { source: "hevy" } }),
     ]);
-    return { day, health, activities, making, garminRun, githubRun };
+    return { day, health, activities, making, garminRun, githubRun, hevyRun };
   },
   component: Today,
 });
@@ -82,6 +84,7 @@ function Today() {
     making,
     garminRun,
     githubRun,
+    hevyRun,
     day: viewedDay,
   } = Route.useLoaderData();
   const today = currentLondonDay();
@@ -99,6 +102,10 @@ function Today() {
         eyebrow={isToday ? "Today" : formatDayLabel(viewedDay)}
         title="Your day at a glance"
         subtitle="Health and activity from Garmin Connect, refreshed automatically."
+      />
+
+      <StaleStrip
+        sources={staleWorkers({ garmin: garminRun, hevy: hevyRun, github: githubRun }, now)}
       />
 
       <DayNavigator day={viewedDay} isToday={isToday} />
