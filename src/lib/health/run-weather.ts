@@ -94,3 +94,12 @@ export function runWeatherPreview(weather: RunWeather | null): string | null {
   }
   return parts.join(" · ");
 }
+
+/** Attaches each activity's weather from rows keyed by activity id; an activity without a row gets null. */
+export function withRunWeather<T extends { id: string }>(
+  activities: T[],
+  rows: (RunWeatherRow & { fitness_activity_id: string })[],
+): (T & { weather: RunWeather | null })[] {
+  const weatherByActivityId = new Map(rows.map((r) => [r.fitness_activity_id, toRunWeather(r)]));
+  return activities.map((a) => ({ ...a, weather: weatherByActivityId.get(a.id) ?? null }));
+}

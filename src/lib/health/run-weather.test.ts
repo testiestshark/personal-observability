@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type RunWeather, runWeatherPreview, runWeatherTiles } from "./run-weather";
+import { type RunWeather, runWeatherPreview, runWeatherTiles, withRunWeather } from "./run-weather";
 
 const weather: RunWeather = {
   temperatureC: 14.26,
@@ -54,5 +54,22 @@ describe("runWeatherPreview", () => {
 
   it("shows nothing for a run with no weather", () => {
     expect(runWeatherPreview(null)).toBeNull();
+  });
+});
+
+describe("withRunWeather", () => {
+  const row = {
+    fitness_activity_id: "a",
+    temperature_c: 10,
+    apparent_temperature_c: 8,
+    relative_humidity_percent: 70,
+    wind_speed_mph: 5,
+    precipitation_mm: 0,
+  };
+
+  it("gives each activity its own weather, and null when it has none", () => {
+    const result = withRunWeather([{ id: "a" }, { id: "b" }], [row]);
+    expect(result[0]?.weather?.temperatureC).toBe(10);
+    expect(result[1]?.weather).toBeNull();
   });
 });

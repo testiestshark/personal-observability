@@ -6,6 +6,7 @@ import {
   RUN_WEATHER_COLUMNS,
   type RunWeather,
   toRunWeather,
+  withRunWeather,
   type WeatherDatabase,
 } from "./run-weather";
 
@@ -237,10 +238,7 @@ export const getFitnessActivitiesForDay = createServerFn({ method: "GET" })
       console.error("Could not load weather for day", data.day, weatherError.message);
       return activities;
     }
-    const byActivity = new Map(
-      (weatherRows ?? []).map((w) => [w.fitness_activity_id, toRunWeather(w)]),
-    );
-    return activities.map((a) => ({ ...a, weather: byActivity.get(a.id) ?? null }));
+    return withRunWeather(activities, weatherRows ?? []);
   });
 
 /**
