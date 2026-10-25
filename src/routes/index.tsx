@@ -63,19 +63,27 @@ export const Route = createFileRoute("/")({
   }).parse,
   loaderDeps: ({ search: { day } }) => ({ day: day ?? currentLondonDay() }),
   loader: async ({ deps: { day } }) => {
-    const [health, activities, making, garminRun] = await Promise.all([
+    const [health, activities, making, garminRun, githubRun] = await Promise.all([
       getDailyHealth({ data: { day } }),
       getFitnessActivitiesForDay({ data: { day } }),
       getGithubMaking({ data: { day } }),
       getWorkerRun({ data: { source: "garmin" } }),
+      getWorkerRun({ data: { source: "github" } }),
     ]);
-    return { day, health, activities, making, garminRun };
+    return { day, health, activities, making, garminRun, githubRun };
   },
   component: Today,
 });
 
 function Today() {
-  const { health, activities, making, garminRun, day: viewedDay } = Route.useLoaderData();
+  const {
+    health,
+    activities,
+    making,
+    garminRun,
+    githubRun,
+    day: viewedDay,
+  } = Route.useLoaderData();
   const today = currentLondonDay();
   const isToday = viewedDay === today;
   const now = new Date();
@@ -124,7 +132,7 @@ function Today() {
           )}
         </section>
 
-        <MakingCard making={making} day={viewedDay} />
+        <MakingCard making={making} day={viewedDay} workerRun={githubRun} now={now} />
 
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div>

@@ -400,6 +400,11 @@ class FakeSupabase:
         self.daily: dict[tuple[str, str, str], dict] = {}
         self.commits: dict[tuple[str, str, str], dict] = {}
         self.calls: list[str] = []
+        self.heartbeats: list[str] = []
+
+    def record_sync_run(self, succeeded_at, session):
+        self.calls.append("record_sync_run")
+        self.heartbeats.append(succeeded_at)
 
     def find_account(self, login, session):
         self.calls.append("find_account")
@@ -734,6 +739,21 @@ def run(supabase, github, accounts=None, backfill=False, log=quiet):
     )
 
 
+class RecordSyncRunTests(unittest.TestCase):
+    def test_upserts_the_github_heartbeat_for_the_signed_in_owner(self) -> None:
+        supabase = SupabaseSession("http://localhost", "key", Path("session.json"))
+        with patch.object(SupabaseSession, "_rest") as rest:
+            supabase.record_sync_run("2026-10-25T12:00:00+00:00", SESSION)
+
+        args, _ = rest.call_args
+        self.assertEqual(args[:2], ("POST", "sync_runs"))
+        self.assertEqual(args[3], [("on_conflict", "user_id,source")])
+        self.assertEqual(
+            args[4],
+            {"user_id": SESSION["user"]["id"], "source": "github", "last_succeeded_at": "2026-10-25T12:00:00+00:00"},
+        )
+
+
 class BackfillTests(unittest.TestCase):
     def test_backfill_asks_for_every_utc_date_from_the_first_of_january_once(self) -> None:
         github = FakeGitHub()
@@ -798,6 +818,31 @@ class RunSyncTests(unittest.TestCase):
         self.assertIn("A", str(raised.exception))
         self.assertEqual([row["login"] for row in supabase.accounts.values()], ["bob"])
         self.assertEqual(len(supabase.daily), TRAILING_DAYS * 5)
+
+    def test_a_run_that_found_nothing_new_still_records_a_worker_run(self) -> None:
+        supabase = FakeSupabase()
+        run(supabase, FakeGitHub())
+        run(supabase, FakeGitHub())
+
+        self.assertEqual(supabase.heartbeats, [NOW.isoformat()] * 2)
+
+    def test_one_failing_account_still_records_the_worker_run(self) -> None:
+        supabase = FakeSupabase()
+        with self.assertRaises(SyncError):
+            run_sync(
+                supabase,
+                self.clients(A=FakeGitHub(login="not-alice"), B=FakeGitHub(login="bob", database_id=202, node_id="U_2")),
+                SESSION, [account_config(**self.A), account_config(**self.B)], NOW, log=quiet,
+            )
+
+        self.assertEqual(supabase.heartbeats, [NOW.isoformat()])
+
+    def test_a_run_where_every_account_failed_records_no_worker_run(self) -> None:
+        supabase = FakeSupabase()
+        with self.assertRaises(SyncError):
+            run(supabase, FakeGitHub(login="not-alice"))
+
+        self.assertEqual(supabase.heartbeats, [])
 
     def test_a_successful_run_returns_a_result_per_account(self) -> None:
         results = run_sync(
