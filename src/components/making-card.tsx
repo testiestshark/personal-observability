@@ -27,11 +27,13 @@ export function MakingCard({
   making,
   day,
   workerRun,
+  now,
 }: {
   making: GithubMaking;
   day: string;
   /** When the GitHub worker's latest Worker run succeeded, or null if it never has. */
   workerRun: string | null;
+  now: Date;
 }) {
   const { accounts, contributions, commits } = making;
   const summary = summariseDay(accounts, contributions, day);
@@ -45,7 +47,6 @@ export function MakingCard({
   );
   // Staleness comes from the Worker run, never from an account's last-synced time:
   // one account failing while the worker still runs is not a Stale source.
-  const now = new Date();
   const stale = isWorkerStale(workerRun, now);
   const pillLabel = stale ? formatStale(workerRun, now) : formatSyncTime(lastSyncedAt);
 

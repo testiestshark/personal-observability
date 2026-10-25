@@ -645,7 +645,8 @@ def run_sync(
     # at least one of them, so a single account's failure (which the sources page
     # already warns about) does not make the whole source Stale, and a run that found
     # nothing new still advances it. A run where every account failed does not.
-    if results:
+    any_account_synced = bool(results)
+    if any_account_synced:
         supabase.record_sync_run(now.isoformat(), session)
 
     if failed:

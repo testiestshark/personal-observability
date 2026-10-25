@@ -132,7 +132,7 @@ function Today() {
           )}
         </section>
 
-        <MakingCard making={making} day={viewedDay} workerRun={githubRun} />
+        <MakingCard making={making} day={viewedDay} workerRun={githubRun} now={now} />
 
         <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
           <div>
