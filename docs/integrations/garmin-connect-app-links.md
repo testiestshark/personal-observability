@@ -121,21 +121,20 @@ Host the test page on a domain other than `connect.garmin.com`. Test each from S
 or Chrome, and again from the page installed to the home screen, tapping a real link.
 Record phone, OS version and result in issue #142.
 
-| Form | URL | Why | Expected result |
-| --- | --- | --- | --- |
-| Universal link, app home (iOS) | `https://connect.garmin.com/app/home` | Listed in Garmin's AASA file | Safari: opens the app if the path matches, else the web page. Home-screen app: UNVERIFIED |
-| Universal link, legacy home (iOS) | `https://connect.garmin.com/modern/home` | Also listed in the AASA file | Same as above |
-| Universal link, a known activity | `https://connect.garmin.com/modern/activity/<id>` (use a real activity id) | `modern/activity/*` is listed; proves a deeper path | Same as above, lands on that activity if handled |
-| App Link (Android) | `https://connect.garmin.com/app/home` | `assetlinks.json` verifies the package for the domain | Chrome: opens the app if its filters accept the path (UNVERIFIED), else the web page. Home-screen app: UNVERIFIED |
-| Intent URL (Android) | `intent://connect.garmin.com/app/home#Intent;scheme=https;package=com.garmin.android.apps.connectmobile;S.browser_fallback_url=https%3A%2F%2Fconnect.garmin.com%2Fmodern%2Fhome;end` | Forces the package; falls back to the web page if it cannot open | Chrome: app opens on a tap, or the fallback loads. Android only |
-| Custom scheme, forum report | `gcm-ciq://` | Only reported scheme that looks Garmin-specific | UNVERIFIED: may open the app's start page; may do nothing or show an error |
-| Custom scheme, generic | `connect://` | Forum report | UNVERIFIED: could open Garmin Connect, another app, or nothing |
-| App Store fallback | `https://apps.apple.com/app/id583446403` | Confirms the store path if nothing else works | Opens the store page, or the listing in the App Store app |
-| Play Store fallback | `https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile` | Same, for Android | Opens the Play listing |
+| Form                              | URL                                                                                                                                                                                  | Why                                                              | Expected result                                                                                                   |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Universal link, app home (iOS)    | `https://connect.garmin.com/app/home`                                                                                                                                                | Listed in Garmin's AASA file                                     | Safari: opens the app if the path matches, else the web page. Home-screen app: UNVERIFIED                         |
+| Universal link, legacy home (iOS) | `https://connect.garmin.com/modern/home`                                                                                                                                             | Also listed in the AASA file                                     | Same as above                                                                                                     |
+| Universal link, a known activity  | `https://connect.garmin.com/modern/activity/<id>` (use a real activity id)                                                                                                           | `modern/activity/*` is listed; proves a deeper path              | Same as above, lands on that activity if handled                                                                  |
+| App Link (Android)                | `https://connect.garmin.com/app/home`                                                                                                                                                | `assetlinks.json` verifies the package for the domain            | Chrome: opens the app if its filters accept the path (UNVERIFIED), else the web page. Home-screen app: UNVERIFIED |
+| Intent URL (Android)              | `intent://connect.garmin.com/app/home#Intent;scheme=https;package=com.garmin.android.apps.connectmobile;S.browser_fallback_url=https%3A%2F%2Fconnect.garmin.com%2Fmodern%2Fhome;end` | Forces the package; falls back to the web page if it cannot open | Chrome: app opens on a tap, or the fallback loads. Android only                                                   |
+| Custom scheme, forum report       | `gcm-ciq://`                                                                                                                                                                         | Only reported scheme that looks Garmin-specific                  | UNVERIFIED: may open the app's start page; may do nothing or show an error                                        |
+| Custom scheme, generic            | `connect://`                                                                                                                                                                         | Forum report                                                     | UNVERIFIED: could open Garmin Connect, another app, or nothing                                                    |
+| App Store fallback                | `https://apps.apple.com/app/id583446403`                                                                                                                                             | Confirms the store path if nothing else works                    | Opens the store page, or the listing in the App Store app                                                         |
+| Play Store fallback               | `https://play.google.com/store/apps/details?id=com.garmin.android.apps.connectmobile`                                                                                                | Same, for Android                                                | Opens the Play listing                                                                                            |
 
 Also try each universal link two ways, typed into the address bar versus tapped from
 the test page, to learn what the owner will actually see.
-
 
 ## Device test result
 
@@ -143,16 +142,16 @@ iPhone 13, iOS 27.0.1, Garmin Connect installed and signed in. Each form was tap
 a test page on another domain, in a Safari tab and again from the page added to the home
 screen. The two gave the same results.
 
-| Form | Result |
-| --- | --- |
-| `https://connect.garmin.com/app/home` | Opened the app |
-| `https://connect.garmin.com/modern/home` | Opened the app |
-| `https://connect.garmin.com/modern/activity/<id>` | Opened the app on that activity |
-| Android intent URL | No effect (Android only, as expected) |
-| `gcm-ciq://` | Opened the app |
-| `connect://` | Opened the app |
-| App Store link | Opened the App Store |
-| Play Store link | Opened the Play Store page |
+| Form                                              | Result                                |
+| ------------------------------------------------- | ------------------------------------- |
+| `https://connect.garmin.com/app/home`             | Opened the app                        |
+| `https://connect.garmin.com/modern/home`          | Opened the app                        |
+| `https://connect.garmin.com/modern/activity/<id>` | Opened the app on that activity       |
+| Android intent URL                                | No effect (Android only, as expected) |
+| `gcm-ciq://`                                      | Opened the app                        |
+| `connect://`                                      | Opened the app                        |
+| App Store link                                    | Opened the App Store                  |
+| Play Store link                                   | Opened the Play Store page            |
 
 Recommendation: use the universal link. It deep-links to an activity and falls back to
 the web page when the app is missing, which a custom scheme does not. The custom schemes
