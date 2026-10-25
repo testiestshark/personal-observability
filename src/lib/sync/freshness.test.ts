@@ -6,6 +6,7 @@ import {
   formatStale,
   isDeviceSyncOld,
   isWorkerStale,
+  oldestWorkerRun,
 } from "./freshness";
 
 const HOUR = 60 * 60 * 1000;
@@ -62,5 +63,24 @@ describe("formatStale", () => {
 
   it("says never ran without a heartbeat", () => {
     expect(formatStale(null, now)).toBe("Stale · never ran");
+  });
+});
+
+describe("oldestWorkerRun", () => {
+  it("returns the older of two runs, whichever order they come in", () => {
+    expect(oldestWorkerRun([hoursAgo(1), hoursAgo(5)])).toBe(hoursAgo(5));
+    expect(oldestWorkerRun([hoursAgo(5), hoursAgo(1)])).toBe(hoursAgo(5));
+  });
+
+  it("is null when any source has no heartbeat yet, so the card reads as Stale", () => {
+    expect(oldestWorkerRun([hoursAgo(1), null])).toBeNull();
+    expect(oldestWorkerRun([undefined, hoursAgo(1)])).toBeNull();
+    expect(oldestWorkerRun([hoursAgo(1), "not a date"])).toBeNull();
+    expect(isWorkerStale(oldestWorkerRun([hoursAgo(1), null]), now)).toBe(true);
+  });
+
+  it("makes the card stale when only the older source is past the threshold", () => {
+    expect(isWorkerStale(oldestWorkerRun([hoursAgo(1), hoursAgo(4)]), now)).toBe(true);
+    expect(isWorkerStale(oldestWorkerRun([hoursAgo(1), hoursAgo(2)]), now)).toBe(false);
   });
 });

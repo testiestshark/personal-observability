@@ -13,6 +13,21 @@ function ageMs(timestamp: string | null | undefined, now: Date): number | null {
 }
 
 /**
+ * The Worker run that sets a card fed by several sources: the oldest of them.
+ * If any source has no readable heartbeat the result is null, which reads as
+ * Stale ("never ran") because that source is unproven.
+ */
+export function oldestWorkerRun(runs: Array<string | null | undefined>): string | null {
+  let oldest: { iso: string; time: number } | null = null;
+  for (const run of runs) {
+    const time = run ? new Date(run).getTime() : Number.NaN;
+    if (Number.isNaN(time)) return null;
+    if (!oldest || time < oldest.time) oldest = { iso: run as string, time };
+  }
+  return oldest?.iso ?? null;
+}
+
+/**
  * Whether a source's latest Worker run is too old. Only the heartbeat counts,
  * never the data: a quiet day with a recent run is not Stale. A missing or
  * unreadable heartbeat is Stale, because nothing proves the worker is alive.
