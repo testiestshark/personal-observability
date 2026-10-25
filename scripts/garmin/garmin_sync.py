@@ -624,11 +624,11 @@ def store_run_weather(
         return result
 
     activity_ids = supabase.fitness_activity_ids([start.external_id for start in starts], session)
-    have = supabase.run_weather_activity_ids(list(activity_ids.values()), session)
+    already_stored = supabase.run_weather_activity_ids(list(activity_ids.values()), session)
     consecutive_failures = 0
     for start in starts:
         activity_id = activity_ids.get(start.external_id)
-        if activity_id is None or activity_id in have:
+        if activity_id is None or activity_id in already_stored:
             continue
         try:
             payload = fetch(weather_request_url(start))

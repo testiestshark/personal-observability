@@ -60,11 +60,12 @@ Run weather (#131) is the first table outside `public`: `weather.run_weather`, o
 Garmin run, written by the Garmin worker after it stores activities and read through the
 API. Anything the API serves must be listed as an exposed schema, so `supabase/config.toml`
 has an `[api]` block naming `weather` for the local stack, and hosted needs the same added
-by hand in the dashboard (a migration cannot do it). A local database that does not have the schema yet (before this
-migration is applied) makes PostgREST fail to start: if
-`supabase start` reports `schema "weather" does not exist`, comment out the `[api]` block,
-start, run `bunx supabase migration up --local`, restore the block and `supabase stop` then
-`start`. The table follows the standard ownership pattern; see
+by hand in the dashboard (a migration cannot do it).
+
+A local database that lacks the schema (before this migration is applied) makes PostgREST
+fail to start. If `supabase start` reports `schema "weather" does not exist`, comment out
+the `[api]` block, start, run `bunx supabase migration up --local`, restore the block, then
+`supabase stop` and `start`. The table follows the standard ownership pattern; see
 [GARMIN.md](integrations/GARMIN.md#run-weather) for the worker behaviour.
 
 ## Environments and sync model
