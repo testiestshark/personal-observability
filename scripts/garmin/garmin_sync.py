@@ -698,7 +698,7 @@ def backfill_run_weather(
     wanted = {row["external_id"] for row in missing}
     first_window = True
     for start_day, end_day in weather_backfill_windows([row["started_at"] for row in missing]):
-        remaining = None if limit is None else limit - total.stored - total.not_yet
+        remaining = None if limit is None else limit - total.stored - total.not_yet - total.failed
         if remaining is not None and remaining <= 0:
             break
         if not first_window:
