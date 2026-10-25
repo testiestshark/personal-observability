@@ -641,6 +641,13 @@ def run_sync(
             )
         log(line)
 
+    # One Worker run covers every account. It counts when the worker did its job for
+    # at least one of them, so a single account's failure (which the sources page
+    # already warns about) does not make the whole source Stale, and a run that found
+    # nothing new still advances it. A run where every account failed does not.
+    if results:
+        supabase.record_sync_run(now.isoformat(), session)
+
     if failed:
         raise SyncError(f"GitHub sync failed for account(s): {', '.join(failed)}.")
     return results
@@ -1023,6 +1030,17 @@ class SupabaseSession:
                 rows[start : start + COMMIT_BATCH],
                 prefer="resolution=merge-duplicates,return=minimal",
             )
+
+    def record_sync_run(self, succeeded_at: str, session: dict[str, Any]) -> None:
+        """Stamp this owner's GitHub heartbeat (the Worker run behind the card's Stale state)."""
+        self._rest(
+            "POST",
+            "sync_runs",
+            session,
+            [("on_conflict", "user_id,source")],
+            {"user_id": user_id_of(session), "source": "github", "last_succeeded_at": succeeded_at},
+            prefer="resolution=merge-duplicates,return=minimal",
+        )
 
     def delete_commits(self, account_id: str, session: dict[str, Any]) -> None:
         self._rest(

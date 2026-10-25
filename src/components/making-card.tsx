@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/chart";
 import type { ChartConfig } from "@/components/ui/chart";
 import { formatSyncTime } from "@/lib/health/format";
+import { formatStale, isWorkerStale } from "@/lib/sync/freshness";
 import type { GithubMaking } from "@/lib/github/github.functions";
 import { summariseDay, weekSeries, weekTotal, type AccountDay } from "@/lib/github/making";
 import { formatDayLabel } from "@/lib/weight/units";
@@ -22,7 +23,16 @@ const colourFor = (index: number): string =>
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
-export function MakingCard({ making, day }: { making: GithubMaking; day: string }) {
+export function MakingCard({
+  making,
+  day,
+  workerRun,
+}: {
+  making: GithubMaking;
+  day: string;
+  /** When the GitHub worker's latest Worker run succeeded, or null if it never has. */
+  workerRun: string | null;
+}) {
   const { accounts, contributions, commits } = making;
   const summary = summariseDay(accounts, contributions, day);
   // One sync time for the card: the most recent across accounts (ISO strings sort in time order).
@@ -33,6 +43,11 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
         : latest,
     null,
   );
+  // Staleness comes from the Worker run, never from an account's last-synced time:
+  // one account failing while the worker still runs is not a Stale source.
+  const now = new Date();
+  const stale = isWorkerStale(workerRun, now);
+  const pillLabel = stale ? formatStale(workerRun, now) : formatSyncTime(lastSyncedAt);
 
   return (
     <section className="rounded-2xl border border-border bg-card p-4 md:p-5">
@@ -40,9 +55,15 @@ export function MakingCard({ making, day }: { making: GithubMaking; day: string 
         <h2 className="text-[11px] font-normal tracking-[0.16em] uppercase text-muted-foreground">
           GitHub
         </h2>
-        {lastSyncedAt ? (
-          <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
-            {formatSyncTime(lastSyncedAt)}
+        {pillLabel ? (
+          <span
+            className={
+              stale
+                ? "rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] text-destructive"
+                : "rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground"
+            }
+          >
+            {pillLabel}
           </span>
         ) : null}
       </div>
