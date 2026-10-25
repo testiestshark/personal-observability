@@ -55,6 +55,10 @@ WEATHER_VARIABLES = (
 WEATHER_COORDINATE_DECIMALS = 1
 # Weather is an extra: a few failures in a row mean it is down or rate-limiting.
 MAX_CONSECUTIVE_WEATHER_FAILURES = 3
+# One Garmin activity-list request covers this many days of missing weather.
+WEATHER_BACKFILL_WINDOW_DAYS = 30
+WEATHER_BACKFILL_PAUSE_SECONDS = 1.0
+WEATHER_LOOKUP_CHUNK = 50
 
 
 class SyncError(RuntimeError):
@@ -658,6 +662,65 @@ def store_run_weather(
     return result
 
 
+def weather_backfill_windows(
+    missing: list[datetime], window_days: int = WEATHER_BACKFILL_WINDOW_DAYS
+) -> list[tuple[date, date]]:
+    """Day ranges covering the given run times, newest first, skipping empty stretches."""
+    days = sorted({value.astimezone(timezone.utc).date() for value in missing}, reverse=True)
+    windows: list[tuple[date, date]] = []
+    while days:
+        end = days[0]
+        start = end - timedelta(days=window_days - 1)
+        windows.append((start, end))
+        days = [day for day in days if day < start]
+    return windows
+
+
+def backfill_run_weather(
+    garmin: Any,
+    supabase: Any,
+    session: dict[str, Any],
+    limit: int | None = None,
+    fetch: Any = fetch_open_meteo,
+    pause: Any = time.sleep,
+) -> WeatherResult:
+    """Store weather for past outdoor runs that have none, newest first.
+
+    Start points are not stored, so Garmin's activity list is read again, one
+    window of days at a time, and only runs still missing weather are looked up.
+    Repeating it changes nothing once everything is covered. `limit` caps the
+    runs looked up in this invocation. Failures are warnings, as for the sync.
+    """
+    missing = supabase.activities_missing_weather(session)
+    total = WeatherResult()
+    if not missing:
+        return total
+    wanted = {row["external_id"] for row in missing}
+    first_window = True
+    for start_day, end_day in weather_backfill_windows([row["started_at"] for row in missing]):
+        remaining = None if limit is None else limit - total.stored - total.not_yet
+        if remaining is not None and remaining <= 0:
+            break
+        if not first_window:
+            pause(WEATHER_BACKFILL_PAUSE_SECONDS)
+        first_window = False
+        activities = garmin.get_activities_by_date(
+            start_day.isoformat(), end_day.isoformat(), sortorder="desc"
+        )
+        starts = [s for s in outdoor_run_starts(activities) if s.external_id in wanted]
+        starts.reverse()  # newest first
+        if remaining is not None:
+            starts = starts[:remaining]
+        result = store_run_weather(starts, supabase, session, fetch=fetch)
+        total.stored += result.stored
+        total.not_yet += result.not_yet
+        total.failed += result.failed
+        if result.stopped_early:
+            total.stopped_early = True
+            break
+    return total
+
+
 def normalize_daily_health(
     rows: Any,
     user_id: str,
@@ -1006,6 +1069,57 @@ class SupabaseSession:
             },
         )
 
+    def activities_missing_weather(self, session: dict[str, Any]) -> list[dict[str, Any]]:
+        """Stored Garmin foot activities with no weather row, as external id and start time."""
+        access_token = self._access_token(session)
+        stored: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page = self._request(
+                "GET",
+                "/rest/v1/fitness_activities?"
+                + urlencode(
+                    {
+                        "select": "id,external_id,activity_type,started_at",
+                        "source": "eq.garmin",
+                        "order": "started_at.desc,id.asc",
+                        "limit": str(ACTIVITIES_PAGE_SIZE),
+                        "offset": str(offset),
+                    }
+                ),
+                access_token=access_token,
+            )
+            if not isinstance(page, list):
+                raise SyncError("Supabase returned an unexpected activities response.")
+            stored.extend(
+                item
+                for item in page
+                if isinstance(item, dict)
+                and is_garmin_activity_id(item.get("external_id"))
+                and isinstance(item.get("id"), str)
+                and is_foot_activity(str(item.get("activity_type") or ""))
+                and not INDOOR_ACTIVITY_PATTERN.search(str(item.get("activity_type") or ""))
+                and _provider_utc_timestamp(item.get("started_at"))
+            )
+            if len(page) < ACTIVITIES_PAGE_SIZE:
+                break
+            offset += ACTIVITIES_PAGE_SIZE
+
+        have: set[str] = set()
+        for index in range(0, len(stored), WEATHER_LOOKUP_CHUNK):
+            chunk = stored[index : index + WEATHER_LOOKUP_CHUNK]
+            have |= self.run_weather_activity_ids([item["id"] for item in chunk], session)
+        return [
+            {
+                "external_id": item["external_id"],
+                "started_at": datetime.fromisoformat(
+                    _provider_utc_timestamp(item["started_at"])  # type: ignore[arg-type]
+                ),
+            }
+            for item in stored
+            if item["id"] not in have
+        ]
+
     def replace_laps(
         self, external_id: str, laps: list[dict[str, Any]], session: dict[str, Any]
     ) -> None:
@@ -1239,6 +1353,30 @@ def backfill_splits(limit: int | None) -> None:
         print("Stopped early after repeated failures; run it again later to continue.")
 
 
+def backfill_weather(limit: int | None) -> None:
+    """One-off: store weather for past outdoor runs that have none.
+
+    Safe to repeat: a run with weather is not asked about again, a lookup that
+    failed or that the archive does not cover yet is retried next time. The
+    start point is used in memory and never stored or printed.
+    """
+    if limit is not None and limit < 1:
+        raise SyncError("--limit must be at least 1.")
+
+    supabase, token_store = configuration()
+    session = session_for_sync(supabase)
+    garmin = Garmin()
+    garmin.login(str(token_store))
+
+    result = backfill_run_weather(garmin, supabase, session, limit=limit)
+    print(
+        f"Stored weather for {result.stored} run(s); {result.not_yet} not in Open-Meteo's "
+        f"archive yet; {result.failed} failed."
+    )
+    if result.stopped_early:
+        print("Stopped early after repeated failures; run it again later to continue.")
+
+
 def status() -> None:
     supabase, token_store = configuration()
     email = None
@@ -1277,6 +1415,13 @@ def main() -> int:
     backfill_parser.add_argument(
         "--limit", type=int, default=None, help="Store splits for at most this many activities, newest first."
     )
+    weather_parser = subcommands.add_parser(
+        "backfill-weather",
+        help="Store weather for past outdoor runs that have none (one-off, repeatable).",
+    )
+    weather_parser.add_argument(
+        "--limit", type=int, default=None, help="Look up at most this many runs, newest first."
+    )
     subcommands.add_parser("status", help="Check whether both cached sessions exist.")
     subcommands.add_parser("test", help="Run the worker unit tests.")
     args = parser.parse_args()
@@ -1290,6 +1435,8 @@ def main() -> int:
             sync(args.days)
         elif args.command == "backfill-splits":
             backfill_splits(args.limit)
+        elif args.command == "backfill-weather":
+            backfill_weather(args.limit)
         elif args.command == "status":
             status()
         else:

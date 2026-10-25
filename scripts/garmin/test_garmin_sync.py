@@ -12,6 +12,7 @@ from garmin_sync import (
     SyncError,
     activities_needing_splits,
     app_environment,
+    backfill_run_weather,
     current_london_day,
     docker_host_url,
     has_embedded_rows,
@@ -28,6 +29,7 @@ from garmin_sync import (
     store_run_weather,
     store_splits,
     validate_railway_volume,
+    weather_backfill_windows,
     weather_request_url,
     _vo2_max,
 )
@@ -1051,3 +1053,130 @@ class RecordSyncRunTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _BackfillSupabase(_WeatherSupabase):
+    def __init__(self, ids: dict[str, str], when: datetime, fail: bool = False) -> None:
+        super().__init__(ids, fail=fail)
+        self.when = when
+
+    def activities_missing_weather(self, session: dict[str, object]) -> list[dict[str, object]]:
+        return [
+            {"external_id": key, "started_at": self.when}
+            for key, value in self.ids.items()
+            if value not in self.have
+        ]
+
+    def insert_run_weather(self, row: dict[str, object], session: dict[str, object]) -> None:
+        super().insert_run_weather(row, session)
+        self.have.add(str(row["fitness_activity_id"]))
+
+
+class _ListGarmin:
+    def __init__(self, activities: list[dict[str, object]]) -> None:
+        self.activities = activities
+        self.windows: list[tuple[str, str]] = []
+
+    def get_activities_by_date(self, start: str, end: str, sortorder: str = "asc") -> list:
+        self.windows.append((start, end))
+        return self.activities
+
+
+class WeatherBackfillTests(unittest.TestCase):
+    SESSION = {"access_token": "t"}
+    WHEN = datetime(2026, 10, 20, 7, 30, tzinfo=timezone.utc)
+
+    def _run(self, supabase, garmin, **kwargs):
+        return backfill_run_weather(
+            garmin,
+            supabase,
+            self.SESSION,
+            fetch=lambda url: _archive("2026-10-20", {7: {}}),
+            pause=lambda seconds: None,
+            **kwargs,
+        )
+
+    def test_fills_outdoor_runs_and_skips_indoor_ones(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1", "2": "uuid-2"}, self.WHEN)
+        treadmill = {"activityId": 2, "activityType": {"typeKey": "treadmill_running"}}
+        garmin = _ListGarmin([_outdoor(activityId=1), treadmill])
+
+        result = self._run(supabase, garmin)
+
+        self.assertEqual(result.stored, 1)
+        self.assertEqual([row["fitness_activity_id"] for row in supabase.inserted], ["uuid-1"])
+
+    def test_running_it_twice_changes_nothing_the_second_time(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1"}, self.WHEN)
+        garmin = _ListGarmin([_outdoor(activityId=1)])
+
+        self._run(supabase, garmin)
+        second = self._run(supabase, garmin)
+
+        self.assertEqual((second.stored, second.not_yet, second.failed), (0, 0, 0))
+        self.assertEqual(len(supabase.inserted), 1)
+        self.assertEqual(len(garmin.windows), 1)
+
+    def test_a_failed_lookup_is_a_warning_and_is_retried_next_time(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1"}, self.WHEN)
+        garmin = _ListGarmin([_outdoor(activityId=1)])
+
+        def boom(url: str) -> object:
+            raise URLError("down")
+
+        with patch("sys.stderr"):
+            first = backfill_run_weather(
+                garmin, supabase, self.SESSION, fetch=boom, pause=lambda seconds: None
+            )
+        self.assertEqual((first.stored, first.failed), (0, 1))
+
+        again = self._run(supabase, garmin)
+        self.assertEqual(again.stored, 1)
+
+    def test_limit_caps_the_runs_looked_up_newest_first(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1", "2": "uuid-2", "3": "uuid-3"}, self.WHEN)
+        garmin = _ListGarmin([_outdoor(activityId=value) for value in (1, 2, 3)])
+
+        result = self._run(supabase, garmin, limit=2)
+
+        self.assertEqual(result.stored, 2)
+
+    def test_nothing_missing_makes_no_garmin_request(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1"}, self.WHEN)
+        supabase.have = {"uuid-1"}
+        garmin = _ListGarmin([])
+
+        self._run(supabase, garmin)
+
+        self.assertEqual(garmin.windows, [])
+
+    def test_windows_are_newest_first_and_skip_empty_stretches(self) -> None:
+        times = [
+            datetime(2026, 10, 20, tzinfo=timezone.utc),
+            datetime(2026, 10, 1, tzinfo=timezone.utc),
+            datetime(2025, 1, 5, tzinfo=timezone.utc),
+        ]
+
+        windows = weather_backfill_windows(times, window_days=30)
+
+        self.assertEqual(len(windows), 2)
+        self.assertEqual(windows[0][1].isoformat(), "2026-10-20")
+        self.assertEqual(windows[1][1].isoformat(), "2025-01-05")
+
+    def test_the_coordinate_is_neither_stored_nor_printed(self) -> None:
+        supabase = _BackfillSupabase({"1": "uuid-1", "2": "uuid-2"}, self.WHEN)
+        garmin = _ListGarmin([_outdoor(activityId=1), _outdoor(activityId=2)])
+
+        def fetch(url: str) -> object:
+            raise RuntimeError(f"failed fetching {url}")
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            backfill_run_weather(
+                garmin, supabase, self.SESSION, fetch=fetch, pause=lambda seconds: None
+            )
+            self._run(supabase, garmin)
+
+        text = out.getvalue() + err.getvalue() + json.dumps(supabase.inserted)
+        for leak in ("51.48", "0.12", "51.4812", "0.1234", "51.5"):
+            self.assertNotIn(leak, text)
