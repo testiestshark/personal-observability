@@ -61,14 +61,13 @@ function degrees(celsius: number): string {
 }
 
 /**
- * The full set for the run page, one tile per value. A run with no weather
+ * The run page's tiles: temperature, humidity, wind and rain. Apparent temperature is stored but not shown. A run with no weather
  * (indoor, or not fetched yet) gives no tiles, so the page shows nothing.
  */
 export function runWeatherTiles(weather: RunWeather | null): { label: string; value: string }[] {
   if (!weather) return [];
   return [
     { label: "Temperature", value: degrees(weather.temperatureC) },
-    { label: "Feels like", value: degrees(weather.apparentTemperatureC) },
     { label: "Humidity", value: `${Math.round(weather.relativeHumidityPercent)}%` },
     { label: "Wind", value: `${Math.round(weather.windSpeedMph)} mph` },
     {

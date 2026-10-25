@@ -11,10 +11,9 @@ const weather: RunWeather = {
 };
 
 describe("runWeatherTiles", () => {
-  it("shows all five values, rounded for reading", () => {
+  it("shows temperature, humidity, wind and rain, rounded for reading", () => {
     expect(runWeatherTiles(weather)).toEqual([
       { label: "Temperature", value: "14°C" },
-      { label: "Feels like", value: "12°C" },
       { label: "Humidity", value: "78%" },
       { label: "Wind", value: "9 mph" },
       { label: "Rain", value: "0 mm" },
@@ -27,9 +26,8 @@ describe("runWeatherTiles", () => {
   });
 
   it("does not show a freezing run as negative zero", () => {
-    const tiles = runWeatherTiles({ ...weather, temperatureC: -0.2, apparentTemperatureC: -3.6 });
+    const tiles = runWeatherTiles({ ...weather, temperatureC: -0.2 });
     expect(tiles[0]?.value).toBe("0°C");
-    expect(tiles[1]?.value).toBe("-4°C");
   });
 
   it("shows nothing for a run with no weather", () => {
