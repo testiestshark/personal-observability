@@ -23,6 +23,7 @@ from garmin_sync import (
     normalize_steps,
     map_run_weather,
     outdoor_run_starts,
+    SupabaseSession,
     session_for_sync,
     store_run_weather,
     store_splits,
@@ -1020,6 +1021,32 @@ class CoordinateNeverLeavesTests(unittest.TestCase):
 
         self.assertIn("HTTP 429", err.getvalue())
         self.assertNotIn("latitude", err.getvalue())
+
+
+class RecordSyncRunTests(unittest.TestCase):
+    SESSION = {"user": {"id": "user-1"}, "access_token": "token"}
+
+    def test_upserts_the_garmin_heartbeat_for_the_signed_in_owner(self) -> None:
+        supabase = SupabaseSession("http://localhost", "key", Path("session.json"))
+        with patch.object(SupabaseSession, "_request") as request:
+            supabase.record_sync_run("2026-10-25T12:00:00+00:00", self.SESSION)
+
+        method, path, payload = request.call_args.args
+        self.assertEqual(method, "POST")
+        self.assertIn("on_conflict=user_id%2Csource", path)
+        self.assertEqual(
+            payload,
+            {
+                "user_id": "user-1",
+                "source": "garmin",
+                "last_succeeded_at": "2026-10-25T12:00:00+00:00",
+            },
+        )
+
+    def test_rejects_a_session_without_a_user_id(self) -> None:
+        supabase = SupabaseSession("http://localhost", "key", Path("session.json"))
+        with self.assertRaises(SyncError):
+            supabase.record_sync_run("2026-10-25T12:00:00+00:00", {"user": {}})
 
 
 if __name__ == "__main__":

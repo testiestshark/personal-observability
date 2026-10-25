@@ -338,6 +338,22 @@ export const getGarminSyncStatus = createServerFn({ method: "GET" }).handler(
   },
 );
 
+/** When a source's latest Worker run succeeded, or null if it has never recorded one. */
+export const getWorkerRun = createServerFn({ method: "GET" })
+  .inputValidator(z.object({ source: z.enum(["garmin", "hevy", "github"]) }).parse)
+  .handler(async ({ data }): Promise<string | null> => {
+    const { supabase, userId } = await requireUser();
+    const { data: row, error } = await supabase
+      .from("sync_runs")
+      .select("last_succeeded_at")
+      .eq("user_id", userId)
+      .eq("source", data.source)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    return row?.last_succeeded_at ?? null;
+  });
+
 export const getHevySyncStatus = createServerFn({ method: "GET" }).handler(
   async (): Promise<{ lastSyncedAt: string } | null> => {
     const { supabase, userId } = await requireUser();
