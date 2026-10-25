@@ -46,6 +46,11 @@ raised again as oversights. Outstanding work lives in GitHub issues.
   start or end coordinates to laps "for completeness". Reopen only if the owner decides
   a map is worth keeping location data for.
 
+  **Amended 2026-10-25 (#131, [ADR 0001](adr/0001-run-weather-from-a-discarded-start-point.md)):**
+  the worker may read an activity's start coordinate, round it to one decimal place and
+  use it in memory to fetch run weather. That is the only permitted use. Storing or
+  logging a coordinate, in any precision, is still a non-goal, as are route maps.
+
 - **A tunnel for opening the local app away from home Wi-Fi.** Decided on 2026-10-06
   (#58). `bun run local` serves the phone over the same Wi-Fi only. A tunnel would put
   a build with a one-tap sign-in and a copy of real data on a public address.
