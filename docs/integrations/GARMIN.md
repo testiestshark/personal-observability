@@ -149,6 +149,43 @@ reports no laps for do not use it up; those are asked about again on each run.
 `scripts/verify-fitness-activity-laps-rls.sql` after the migration, locally and again
 against hosted; it uses two accounts and rolls everything back.
 
+## Run weather
+
+Each outdoor run, walk or hike gets the weather for the hour it started in, stored in
+`weather.run_weather` (one row per activity, deleted with it). Design and reasoning:
+[ADR 0001](../adr/0001-run-weather-from-a-discarded-start-point.md).
+
+- **Source:** Open-Meteo's historical archive, so it is what the weather actually was, never a
+  forecast. Five values for the UTC start hour: temperature, apparent temperature, relative
+  humidity, wind speed (mph) and precipitation. Fetch time and source are on the row. It is an
+  area reading, not a measurement at the runner's position.
+- **The start point is used and discarded.** The activity summary the sync has already fetched
+  carries `startLatitude`/`startLongitude`, so weather costs no Garmin request. The worker rounds
+  them to one decimal place (about 11 km), sends that to Open-Meteo, and drops it. It is not
+  stored, not logged, and not in any error message (failures print the HTTP status only).
+  `RunStart` in `garmin_sync.py` hides it from `repr`, and tests check the rows and the output.
+- **Indoor activities get none.** A treadmill summary has no start coordinate keys at all (checked
+  against a live session on 2026-10-25, #134), so a missing or zero coordinate is what excludes
+  it; the type key (`treadmill`, `indoor`, `virtual`) is a second guard. `is_foot_activity` alone
+  is not enough, because `treadmill_running` contains "running".
+- **Fetched once.** A run that already has a row is not asked about again. If the archive has no
+  complete value for the hour yet, no row is written and the next sync tries again, for as long as
+  the run is in the sync window (seven days by default). Three failures in a row stop the step for
+  that sync. A failure is a warning and never fails the sync.
+- **No backfill yet.** Runs older than the sync window have no weather until one is added.
+
+**Exposing the schema.** The API serves only the schemas it is told about. Locally
+`supabase/config.toml` lists `weather`; **on hosted it is a manual step**: Dashboard > Settings >
+API > Exposed schemas, add `weather`. Until then the worker's weather step warns and the rest of
+the sync is unaffected. The worker reads and writes with the `Accept-Profile` and `Content-Profile`
+headers set to `weather`.
+
+**Verification.** Run `scripts/verify-run-weather-rls.sql` after the migration, locally and again
+against hosted (see [ARCHITECTURE.md](../ARCHITECTURE.md#roles-and-ownership-policy)). It checks
+that `anon` has no grant on the table or the schema, that a second account cannot read, insert as,
+update or delete the first account's rows, and that the table has no location column. It rolls
+everything back.
+
 ## Live architecture
 
 The published app can use the same automatic integration without running Docker

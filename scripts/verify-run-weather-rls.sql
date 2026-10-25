@@ -34,8 +34,7 @@ begin
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'weather' and table_name = 'run_weather'
-      and (column_name ilike '%lat%' or column_name ilike '%lon%'
-           or column_name ilike '%coord%' or column_name ilike '%location%')
+      and column_name ~* '(^|_)(lat|latitude|lon|lng|longitude|coord|coords|coordinates|location|geo|point)(_|$)'
   ) then
     raise exception 'run_weather has a location column';
   end if;

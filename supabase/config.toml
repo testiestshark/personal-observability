@@ -9,3 +9,10 @@
 # Changing it again would orphan the existing Docker volume and start the local
 # database empty, so `bunx supabase db reset` is needed afterwards.
 project_id = "personal_observability"
+
+# The default exposes only public and graphql_public. weather.run_weather (#135)
+# is read and written through the API, so the schema is listed here. Hosted is a
+# separate manual step: Dashboard > Settings > API > Exposed schemas.
+[api]
+schemas = ["public", "graphql_public", "weather"]
+extra_search_path = ["public", "extensions"]
