@@ -74,6 +74,20 @@ _Avoid_: Local day (for GitHub counts), London day
 Per **GitHub account**, `full` or `counts_only`. A `counts_only` account stores nothing but per-type daily counts: no repository names, headlines or repository counts.
 _Avoid_: Privacy mode, visibility
 
+### Sync
+
+**Worker run**:
+One completed scheduled pull of a source (Garmin, Hevy or GitHub) into the app. A run that finds nothing new still counts: it proves the pipeline is alive.
+_Avoid_: Sync (alone, when the watch could be meant), update, refresh
+
+**Device sync**:
+The moment the owner's Garmin watch last synced to Garmin Connect, which is the only way Garmin has new data to hand over. It happens when the owner opens the Garmin app, not on a schedule, so an old one means "open the app", not "something is broken".
+_Avoid_: Sync (alone), watch sync (ambiguous with **Worker run**)
+
+**Stale**:
+A source whose latest **Worker run** is older than its threshold, meaning something of ours has stopped. A quiet day is never stale, and an old **Device sync** is not stale: it only prompts a nudge to the owner.
+_Avoid_: Out of date, outdated, offline
+
 ### Time
 
 **Local day**:
