@@ -76,3 +76,21 @@ export function runWeatherTiles(weather: RunWeather | null): { label: string; va
     },
   ];
 }
+
+/**
+ * The one-line weather under a run in the day's activity list: temperature,
+ * wind, and rain only when there was some. Null when the run has no weather, so
+ * the card adds no line.
+ */
+export function runWeatherPreview(weather: RunWeather | null): string | null {
+  if (!weather) return null;
+  const parts = [degrees(weather.temperatureC), `${Math.round(weather.windSpeedMph)} mph wind`];
+  if (weather.precipitationMm > 0) {
+    const rain =
+      weather.precipitationMm < 0.05
+        ? "<0.1"
+        : weather.precipitationMm.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+    parts.push(`${rain} mm rain`);
+  }
+  return parts.join(" · ");
+}

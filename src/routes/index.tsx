@@ -36,6 +36,7 @@ import {
   getFitnessActivitiesForDay,
   getWorkerRun,
 } from "@/lib/health/health.functions";
+import { runWeatherPreview } from "@/lib/health/run-weather";
 import { formatStale, isWorkerStale } from "@/lib/sync/freshness";
 import { currentLondonDay, formatDayLabel, shiftDay } from "@/lib/weight/units";
 
@@ -150,6 +151,7 @@ function Today() {
 
 function ActivityCard({ activity }: { activity: FitnessActivity }) {
   const linked = isActivityLinked(activity);
+  const weather = runWeatherPreview(activity.weather ?? null);
   const content = (
     <div className="flex items-start justify-between gap-4">
       <div className="min-w-0">
@@ -157,6 +159,7 @@ function ActivityCard({ activity }: { activity: FitnessActivity }) {
           {activity.name ?? formatActivityType(activity.type)}
         </h3>
         <p className="mt-1 text-xs text-muted-foreground">{formatActivitySummary(activity)}</p>
+        {weather ? <p className="mt-0.5 text-xs text-muted-foreground">{weather}</p> : null}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[11px] text-muted-foreground">
