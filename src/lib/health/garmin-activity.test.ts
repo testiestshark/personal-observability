@@ -181,12 +181,16 @@ describe("garminActivityHeader", () => {
 
   it("fills the tiles from a run", () => {
     const values = garminActivityHeader(run).tiles.map((tile) => tile.value);
-    expect(values).toEqual(["5 km", "30 min", "6:00 /km", "152 bpm"]);
+    expect(values).toEqual(["5 km", "30:00", "6:00 /km", "152 bpm"]);
   });
 
-  it("shows Time as the stored duration, in hours and minutes from an hour up", () => {
+  it("shows Time as the stored duration, as mm:ss, or h:mm:ss from an hour up", () => {
     const long = { ...run, durationSeconds: 3_900 };
-    expect(garminActivityHeader(long).tiles[1]!.value).toBe("1h 05m");
+    expect(garminActivityHeader(long).tiles[1]!.value).toBe("1:05:00");
+  });
+
+  it("keeps the seconds rather than rounding to the minute", () => {
+    expect(garminActivityHeader({ ...run, durationSeconds: 1_937 }).tiles[1]!.value).toBe("32:17");
   });
 
   it("shows a dash for each missing value rather than dropping the tile or showing 0", () => {
