@@ -7,7 +7,6 @@ import {
   MIN_SHOWN_DISTANCE_METERS,
 } from "./format";
 import type { GarminActivityDetail, GarminLap } from "./health.functions";
-import { formatWorkoutDuration } from "./workout";
 import { formatDayLabel } from "@/lib/weight/units";
 
 const MISSING = "—";
@@ -359,7 +358,12 @@ export function garminActivityHeader(activity: GarminActivityDetail): GarminActi
     startTime: formatActivityTime(activity.startedAt),
     tiles: [
       { label: "Distance", value: formatKilometres(activity.distanceMeters) },
-      { label: "Time", value: formatWorkoutDuration(activity.durationSeconds) },
+      {
+        label: "Time",
+        value: isReported(activity.durationSeconds)
+          ? formatClock(activity.durationSeconds)
+          : MISSING,
+      },
       isFoot
         ? {
             label: "Avg pace",
